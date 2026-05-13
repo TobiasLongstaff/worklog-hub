@@ -1,0 +1,29 @@
+{
+  "language": "es",
+  "memoryPath": "./memory",
+  "daysToScan": 3,
+  "maxAgentSessions": 5,
+  "maxAgentMessagesPerSession": 20,
+  "projects": [
+    {
+      "name": "facturacion-front",
+      "path": "../facturacion-front",
+      "type": "frontend"
+    },
+    {
+      "name": "facturacion-back",
+      "path": "../facturacion-back",
+      "type": "backend"
+    }
+  ],
+  "agentLogs": {
+    "claudeCode": {
+      "enabled": true,
+      "basePath": "~/.claude/projects"
+    },
+    "openCode": {
+      "enabled": true,
+      "basePath": "~/.local/share/opencode"
+    }
+  }
+}

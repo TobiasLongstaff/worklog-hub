@@ -1,0 +1,14 @@
+{
+  "name": "worklog-hub",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "worklog:start": "bun scripts/worklog-start.ts",
+    "worklog:end": "bun scripts/worklog-end.ts",
+    "worklog:status": "bun scripts/worklog-status.ts",
+    "commit:plan": "bun scripts/commit-plan.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
