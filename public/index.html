@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backlog Vivo — worklog-hub</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1>worklog-hub</h1>
+      <p>Backlog Vivo</p>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-title">Bandeja</div>
+        <div class="nav-item active" data-tab="DETECTED" id="nav-DETECTED">
+          <span>Inbox</span>
+          <span class="nav-count" id="cnt-DETECTED">—</span>
+        </div>
+        <div class="nav-item" data-tab="ACCEPTED" id="nav-ACCEPTED">
+          <span>Aceptados</span>
+          <span class="nav-count" id="cnt-ACCEPTED">—</span>
+        </div>
+        <div class="nav-item" data-tab="ASSIGNED_TO_AGENT" id="nav-ASSIGNED_TO_AGENT">
+          <span>En agentes</span>
+          <span class="nav-count" id="cnt-ASSIGNED_TO_AGENT">—</span>
+        </div>
+        <div class="nav-item" data-tab="SUSPECTED" id="nav-SUSPECTED">
+          <span>Posib. resueltos</span>
+          <span class="nav-count" id="cnt-SUSPECTED">—</span>
+        </div>
+        <div class="nav-item" data-tab="NEEDS_MANUAL_TEST" id="nav-NEEDS_MANUAL_TEST">
+          <span>Falta probar</span>
+          <span class="nav-count" id="cnt-NEEDS_MANUAL_TEST">—</span>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">Cerrados</div>
+        <div class="nav-item" data-tab="VERIFIED_DONE" id="nav-VERIFIED_DONE">
+          <span>Verificados</span>
+          <span class="nav-count" id="cnt-VERIFIED_DONE">—</span>
+        </div>
+        <div class="nav-item" data-tab="DISCARDED" id="nav-DISCARDED">
+          <span>Descartados</span>
+          <span class="nav-count" id="cnt-DISCARDED">—</span>
+        </div>
+        <div class="nav-item" data-tab="REOPENED" id="nav-REOPENED">
+          <span>Reabiertos</span>
+          <span class="nav-count" id="cnt-REOPENED">—</span>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">Vista</div>
+        <div class="nav-item" data-tab="ALL" id="nav-ALL">
+          <span>Todos</span>
+          <span class="nav-count" id="cnt-ALL">—</span>
+        </div>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <h2 id="view-title">Inbox — Detectados</h2>
+        <p id="view-desc">Pendientes detectados que aún no fueron revisados</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="App.refresh()">↺ Actualizar</button>
+        <button class="btn btn-primary" onclick="App.openCreateModal()">+ Nuevo pendiente</button>
+      </div>
+    </div>
+
+    <!-- KPI bar -->
+    <div class="kpi-bar" id="kpi-bar">
+      <div class="kpi-card" data-tab="DETECTED" onclick="App.setTab('DETECTED')">
+        <div class="kpi-value" id="kpi-detected">—</div>
+        <div class="kpi-label">Detectados</div>
+      </div>
+      <div class="kpi-card" data-tab="ACCEPTED" onclick="App.setTab('ACCEPTED')">
+        <div class="kpi-value" id="kpi-accepted">—</div>
+        <div class="kpi-label">Aceptados</div>
+      </div>
+      <div class="kpi-card" data-tab="NEEDS_MANUAL_TEST" onclick="App.setTab('NEEDS_MANUAL_TEST')">
+        <div class="kpi-value" id="kpi-needs-test">—</div>
+        <div class="kpi-label">Falta probar</div>
+      </div>
+      <div class="kpi-card" data-tab="VERIFIED_DONE" onclick="App.setTab('VERIFIED_DONE')">
+        <div class="kpi-value" id="kpi-verified">—</div>
+        <div class="kpi-label">Cerrados</div>
+      </div>
+      <div class="kpi-card" data-tab="DISCARDED" onclick="App.setTab('DISCARDED')">
+        <div class="kpi-value" id="kpi-discarded">—</div>
+        <div class="kpi-label">Descartados</div>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <input
+        type="search"
+        class="search-input"
+        placeholder="Buscar por título, descripción, módulo…"
+        id="search-input"
+        oninput="App.onSearch(this.value)"
+      />
+      <select class="filter-select" id="filter-type" onchange="App.onFilterChange()">
+        <option value="">Todos los tipos</option>
+        <option value="BUG">Bug</option>
+        <option value="TECH_DEBT">Deuda técnica</option>
+        <option value="FEATURE">Feature</option>
+        <option value="VALIDATION_PENDING">Validación pendiente</option>
+        <option value="OPEN_DECISION">Decisión abierta</option>
+        <option value="IMPLEMENTATION_NOT_VERIFIED">Implementación sin verificar</option>
+        <option value="IDEA">Idea</option>
+      </select>
+      <select class="filter-select" id="filter-source" onchange="App.onFilterChange()">
+        <option value="">Todos los orígenes</option>
+        <option value="CHATGPT">ChatGPT</option>
+        <option value="CLAUDE_CODE">Claude Code</option>
+        <option value="OPENCODE">OpenCode</option>
+        <option value="MANUAL">Manual</option>
+        <option value="REPO_AUDIT">Auditoría repo</option>
+        <option value="COMMIT_ANALYSIS">Análisis commit</option>
+      </select>
+      <select class="filter-select" id="filter-area" onchange="App.onFilterChange()">
+        <option value="">Todas las áreas</option>
+        <option value="FRONTEND">Frontend</option>
+        <option value="BACKEND">Backend</option>
+        <option value="FULLSTACK">Fullstack</option>
+        <option value="PRODUCT">Producto</option>
+        <option value="UX">UX</option>
+      </select>
+    </div>
+
+    <!-- Content -->
+    <div class="content-area" id="content-area">
+      <div class="loading-overlay"><div class="spinner"></div></div>
+    </div>
+  </main>
+
+</div>
+
+<!-- Detail panel (hidden by default) -->
+<div id="panel-container"></div>
+
+<!-- Modal container -->
+<div id="modal-container"></div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

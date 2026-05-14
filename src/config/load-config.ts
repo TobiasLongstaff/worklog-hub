@@ -15,6 +15,12 @@ export interface AgentLogConfig {
   resolvedBasePath: string;
 }
 
+export interface StackConfig {
+  frontend?: string;
+  backend?: string;
+  testing?: string;
+}
+
 export interface WorklogConfig {
   language: string;
   memoryPath: string;
@@ -23,6 +29,7 @@ export interface WorklogConfig {
   maxAgentSessions: number;
   maxAgentMessagesPerSession: number;
   projects: ProjectConfig[];
+  stack: StackConfig;
   agentLogs: {
     claudeCode: AgentLogConfig;
     openCode: AgentLogConfig;
@@ -71,7 +78,14 @@ export function loadConfig(hubRoot: string): WorklogConfig {
   });
 
   const rawAgentLogs = raw["agentLogs"] as Record<string, unknown> | undefined;
+  const rawStack = raw["stack"] as Record<string, unknown> | undefined;
   const memoryPath = String(raw["memoryPath"] ?? "./memory");
+
+  const stack: StackConfig = {
+    frontend: rawStack?.["frontend"] ? String(rawStack["frontend"]) : undefined,
+    backend:  rawStack?.["backend"]  ? String(rawStack["backend"])  : undefined,
+    testing:  rawStack?.["testing"]  ? String(rawStack["testing"])  : undefined,
+  };
 
   return {
     language: String(raw["language"] ?? "es"),
@@ -81,6 +95,7 @@ export function loadConfig(hubRoot: string): WorklogConfig {
     maxAgentSessions: Number(raw["maxAgentSessions"] ?? 5),
     maxAgentMessagesPerSession: Number(raw["maxAgentMessagesPerSession"] ?? 20),
     projects,
+    stack,
     agentLogs: {
       claudeCode: resolveAgentLog(rawAgentLogs?.["claudeCode"], hubRoot),
       openCode: resolveAgentLog(rawAgentLogs?.["openCode"], hubRoot),

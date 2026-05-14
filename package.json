@@ -6,7 +6,9 @@
     "worklog:start": "bun scripts/worklog-start.ts",
     "worklog:end": "bun scripts/worklog-end.ts",
     "worklog:status": "bun scripts/worklog-status.ts",
-    "commit:plan": "bun scripts/commit-plan.ts"
+    "commit:plan": "bun scripts/commit-plan.ts",
+    "backlog": "bun scripts/backlog-server.ts",
+    "backlog:seed": "bun scripts/backlog-seed.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

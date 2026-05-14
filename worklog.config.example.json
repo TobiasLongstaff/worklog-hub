@@ -4,18 +4,26 @@
   "daysToScan": 3,
   "maxAgentSessions": 5,
   "maxAgentMessagesPerSession": 20,
+
   "projects": [
     {
-      "name": "facturacion-front",
-      "path": "../facturacion-front",
+      "name": "mi-frontend",
+      "path": "../mi-frontend",
       "type": "frontend"
     },
     {
-      "name": "facturacion-back",
-      "path": "../facturacion-back",
+      "name": "mi-backend",
+      "path": "../mi-backend",
       "type": "backend"
     }
   ],
+
+  "stack": {
+    "frontend": "React 18, TypeScript, Vite, TailwindCSS, React Hook Form, Zod",
+    "backend": "Node.js, Express, PostgreSQL, Drizzle ORM",
+    "testing": "Vitest, Playwright"
+  },
+
   "agentLogs": {
     "claudeCode": {
       "enabled": true,

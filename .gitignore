@@ -3,3 +3,6 @@ node_modules/
 worklog.config.json
 dist/
 .claude/
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
