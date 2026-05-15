@@ -1,12 +1,37 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "types": ["bun-types"]
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "types": ["vite/client"],
+    "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src/**/*", "scripts/**/*"]
+  "include": [
+    "src/App.tsx",
+    "src/main.tsx",
+    "src/lib/**/*",
+    "src/components/**/*",
+    "src/hooks/**/*"
+  ],
+  "exclude": [
+    "src/backlog",
+    "src/ai",
+    "src/collectors",
+    "src/config",
+    "src/memory",
+    "src/utils",
+    "scripts",
+    "node_modules",
+    "dist",
+    "src-tauri"
+  ]
 }

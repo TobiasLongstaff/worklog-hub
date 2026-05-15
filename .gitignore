@@ -6,3 +6,8 @@ dist/
 data/*.sqlite
 data/*.sqlite-wal
 data/*.sqlite-shm
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/binaries/*.exe
+src-tauri/binaries/worklog-server-*

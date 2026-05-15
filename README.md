@@ -1,491 +1,486 @@
-# worklog-hub
+# Worklog Hub
 
-CLI personal para recuperar continuidad de trabajo entre sesiones. Lee múltiples repositorios (frontend, backend) como fuentes, combina Git, memoria Markdown, sesiones de Claude Code y OpenCode, y genera un resumen de arranque con IA.
-
----
-
-## 1. Qué problema resuelve
-
-Después de varios días —especialmente tras el fin de semana— es fácil perder el hilo de:
-
-- en qué parte del trabajo estabas
-- cuál fue el último avance importante
-- qué quedó pendiente
-- qué deberías hacer hoy
-- qué no deberías tocar para no dispersarte
-
-Este hub lo resuelve combinando fuentes objetivas (Git) con memoria curada (Markdown) y logs de agentes IA.
+**Memoria de trabajo local-first para desarrolladores que trabajan con IA.**  
+Registrá pendientes, organizá tu backlog técnico, generá prompts y conectá ChatGPT directamente con tu trabajo.
 
 ---
 
-## 2. Cómo instalar
+## Qué es Worklog Hub
+
+Worklog Hub nació para resolver un problema concreto: los desarrolladores que trabajan intensivamente con ChatGPT, Claude Code u otros agentes acumulan pendientes en conversaciones que luego se pierden.
+
+Un bug que se menciona de pasada, una decisión técnica que queda abierta, un refactor que un agente dice haber completado pero nadie verificó — sin un sistema que los capture y tracee, ese trabajo simplemente desaparece.
+
+Worklog Hub captura esos pendientes, los convierte en backlog estructurado, mantiene trazabilidad entre la conversación y el trabajo real, y permite conectar ChatGPT directamente para que detecte y registre pendientes durante tus conversaciones.
+
+**Para quién está pensado:**
+- Desarrolladores que trabajan diariamente con ChatGPT como herramienta de trabajo
+- Equipos que usan agentes de código (Claude Code, OpenCode) y quieren tracear qué se pidió y qué quedó verificado
+- Cualquier dev que quiera convertir las ideas que aparecen en sus conversaciones en acciones concretas
+
+---
+
+## Funcionalidades
+
+### Backlog Vivo
+El núcleo de la app. Una vista de todos los pendientes técnicos organizados por estado.
+
+- Registrar bugs, deuda técnica, features futuras, validaciones pendientes, decisiones abiertas e ideas
+- Estados con flujo definido: `DETECTED → ACCEPTED → ASSIGNED_TO_AGENT → IMPLEMENTED_CLAIMED → NEEDS_MANUAL_TEST → VERIFIED_DONE`
+- Vista de detalle con contexto de origen, por qué importa y próximo paso sugerido
+- Filtros por estado, tipo, fuente y área técnica
+- KPIs del backlog siempre visibles
+
+### Integración con ChatGPT vía MCP
+Worklog Hub expone un servidor MCP local (Model Context Protocol) que permite conectar ChatGPT directamente.
+
+- ChatGPT puede consultar pendientes existentes y crear nuevos con aprobación del usuario
+- Nunca crea ítems sin confirmación explícita
+- Usa ngrok con Static Domain para exponer el MCP por HTTPS con URL estable — configurás el conector una sola vez
+
+### Detección conversacional de pendientes
+Con el MCP conectado y las Project Instructions configuradas en ChatGPT:
+1. ChatGPT detecta durante la conversación algo que podría ser un pendiente
+2. Consulta Worklog Hub para verificar si ya existe
+3. Propone registrarlo con un resumen estructurado
+4. El usuario confirma (o no)
+5. Se guarda en Backlog Vivo con `source=CHATGPT`
+
+### Generación de prompts
+Desde cualquier pendiente podés generar un prompt estructurado para resolverlo:
+- Tipos: Implementación, Auditoría, Investigación, Estrategia
+- Targets: Frontend, Backend, Fullstack
+- El prompt generado se persiste y se puede copiar o enviar a un agente
+
+### Tareas de agentes
+Vínculo entre pendientes y tareas enviadas a agentes (Claude Code, OpenCode):
+- Registro del comando enviado y el agente destino
+- Trazabilidad del estado: Borrador → Listo → Enviado → Completado
+- Historial de prompts enviados
+
+### App desktop local-first
+- Empaquetada con Tauri v2 para Windows (macOS y Linux en desarrollo)
+- Todos los datos se guardan localmente en SQLite
+- Sin cuenta remota, sin backend cloud, sin suscripción
+- El servidor MCP y la UI arrancan juntos al abrir la app
+
+### CLI de worklog (herramienta adicional)
+Scripts para arrancar y cerrar el día de trabajo con síntesis por IA:
+- `bun run worklog:start` — genera un resumen de arranque leyendo Git, memoria y logs de agentes
+- `bun run worklog:end` — cierra el día con notas guardadas localmente
+- `bun run commit:plan` — analiza `git diff` y propone mensajes de commit
+
+---
+
+## Stack tecnológico
+
+| Capa | Tecnología |
+|---|---|
+| Runtime / servidor | [Bun](https://bun.sh) |
+| Frontend | React 19 + Vite 8 + TypeScript |
+| Estilos | Tailwind CSS v4 + shadcn/ui |
+| Animaciones | framer-motion |
+| Base de datos | SQLite (nativo de Bun) |
+| Desktop | Tauri v2 + Rust |
+| Protocolo IA | MCP JSON-RPC 2.0 (spec 2025-03-26) |
+| Túnel HTTPS | ngrok (static domain) |
+
+---
+
+## Capturas
+
+> Las capturas se incorporarán próximamente. La app incluye:
+> - Dashboard con KPIs del backlog
+> - Vista Backlog Vivo con filtros y detalle de pendiente
+> - Integración ChatGPT / MCP con estado del túnel en tiempo real
+
+---
+
+## Requisitos
+
+| Requisito | Detalle |
+|---|---|
+| [Bun](https://bun.sh) ≥ 1.1 | Runtime principal |
+| Sistema operativo | Windows 10/11 (app desktop), cualquier OS para modo web |
+| Rust + cargo | Solo si compilás la app desktop. [Instalar rustup](https://rustup.rs) |
+| Visual Studio C++ Build Tools | Solo Windows, para compilar Tauri. Instalar con workload "Desktop development with C++" |
+| [ngrok](https://ngrok.com) | Solo para integración con ChatGPT. Plan gratuito suficiente |
+| ChatGPT con Developer Mode | Solo para usar el conector MCP |
+
+---
+
+## Instalación y puesta en marcha
 
 ```bash
-git clone <repo> worklog-hub
+git clone https://github.com/tu-usuario/worklog-hub.git
 cd worklog-hub
 bun install
 ```
 
----
+### Opción A — Modo web (más rápido para probar)
 
-## 3. Cómo configurar `.env`
-
-```bash
-cp .env.example .env
-```
-
-Edita `.env`:
-
-```env
-AI_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o
-```
-
-Si no tienes API key, los comandos igual funcionan: `worklog:status` siempre, y `worklog:start` / `worklog:end` muestran la evidencia sin síntesis IA.
-
----
-
-## 4. Cómo configurar `worklog.config.json`
+Levanta el servidor backend y la UI en el navegador:
 
 ```bash
-cp worklog.config.example.json worklog.config.json
+bun run dev
 ```
 
-Edita `worklog.config.json`:
+Abre `http://localhost:5173` en el navegador.
 
-```json
-{
-  "language": "es",
-  "memoryPath": "./memory",
-  "daysToScan": 3,
-  "maxAgentSessions": 5,
-  "maxAgentMessagesPerSession": 20,
-  "projects": [
-    {
-      "name": "facturacion-front",
-      "path": "../facturacion-front",
-      "type": "frontend"
-    },
-    {
-      "name": "facturacion-back",
-      "path": "../facturacion-back",
-      "type": "backend"
-    }
-  ],
-  "agentLogs": {
-    "claudeCode": {
-      "enabled": true,
-      "basePath": "~/.claude/projects"
-    },
-    "openCode": {
-      "enabled": true,
-      "basePath": "~/.local/share/opencode"
-    }
-  }
-}
-```
+El script `dev` levanta automáticamente el servidor backend en el puerto 3131 y el frontend Vite en el 5173.
 
-Los `path` de proyectos son **relativos al directorio de worklog-hub** o absolutos. Se soporta `~` para el home.
+### Opción B — Modo desktop en desarrollo
 
-Puedes declarar tantos proyectos como necesites.
-
----
-
-## 5. Cómo configurar los paths de Claude Code y OpenCode
-
-### Claude Code
-
-Por defecto guarda sesiones en `~/.claude/projects/`. En Windows suele ser:
-
-```
-C:\Users\<usuario>\.claude\projects
-```
-
-Configura en `worklog.config.json`:
-
-```json
-"claudeCode": {
-  "enabled": true,
-  "basePath": "~/.claude/projects"
-}
-```
-
-### OpenCode
-
-Por defecto en Linux/macOS:
-
-```
-~/.local/share/opencode
-```
-
-En Windows puede variar. Configura el path real donde OpenCode guarda sus datos.
-
-Si alguno de los dos no está instalado, simplemente pon `"enabled": false`.
-
----
-
-## 6. Cómo correr
-
-### Ver estado del hub (sin IA, instantáneo)
+Requiere Rust y las Build Tools instaladas (ver Requisitos):
 
 ```bash
-bun run worklog:status
+bun run desktop
 ```
 
-Muestra: proyectos, Git, memoria, configuración IA, paths de agentes.
+Levanta el servidor backend y abre la ventana Tauri conectada al frontend en desarrollo.
 
-### Arrancar el día
+### Opción C — Build de producción (app instalable)
 
 ```bash
-bun run worklog:start
+# 1. Compilar el servidor como binario nativo (Windows)
+bun run build:server:win
+
+# 2. Build completo: frontend + servidor + empaquetado Tauri
+bun run desktop:build
 ```
 
-Recolecta todo el contexto y genera un resumen de arranque con IA (o muestra la evidencia raw si no hay IA configurada).
+El instalador queda en `src-tauri/target/release/bundle/`.
 
-### Cerrar el día
-
+Para otras plataformas, reemplazá el paso 1:
 ```bash
-bun run worklog:end
+bun run build:server:mac-arm   # macOS Apple Silicon
+bun run build:server:mac-x64   # macOS Intel
+bun run build:server:linux     # Linux x64
 ```
 
-Te hace 5 preguntas, recolecta evidencia, genera y guarda:
-- `memory/daily/YYYY-MM-DD.md` — nota del día
-- `memory/current-focus.md` — estado actualizado (con backup automático)
+> **Nota:** No hay releases descargables disponibles todavía. Por ahora la app se ejecuta desde el repositorio. Los instaladores se incorporarán más adelante.
 
----
+### Datos de ejemplo
 
-## 7. Commit planning
-
-Analiza el estado actual de Git de un proyecto y genera una propuesta de commit optimizada para continuidad de trabajo.
-
-```bash
-bun run commit:plan -- --project app-bluvoice
-bun run commit:plan -- --project api-bluvoice
-
-# alias corto
-bun run commit:plan -- -p api-bluvoice
-```
-
-Este comando:
-- Lee `git status` y `git diff` (staged + unstaged)
-- Propone grupos de archivos para commitear
-- Genera mensajes en formato Conventional Commits con sección `Worklog`
-- **No ejecuta `git add`**
-- **No ejecuta `git commit`**
-- **No modifica ningún archivo del proyecto**
-
-Flujo recomendado:
-
-```bash
-# 1. Revisar el plan
-bun run commit:plan -- -p api-bluvoice
-
-# 2. Stagear lo que el plan recomienda
-git -C "C:/Indicum Technology/api-bluvoice" add <archivos>
-
-# 3. Commitear con el mensaje propuesto
-git -C "C:/Indicum Technology/api-bluvoice" commit
-```
-
-Variables de entorno opcionales (agregar a `.env`):
-
-```env
-MAX_DIFF_CHARS=60000      # límite de chars por diff antes de truncar
-MAX_FILE_LIST_ITEMS=200   # límite de archivos en el listado
-```
-
----
-
-## 8. Aliases recomendados
-
-Agrega a tu `.bashrc`, `.zshrc` o perfil de PowerShell:
-
-**bash/zsh:**
-
-```bash
-alias ws="cd ~/dev/worklog-hub && bun run worklog:start"
-alias we="cd ~/dev/worklog-hub && bun run worklog:end"
-alias wstatus="cd ~/dev/worklog-hub && bun run worklog:status"
-alias wcfront="cd ~/dev/worklog-hub && bun run commit:plan -- --project app-bluvoice"
-alias wcback="cd ~/dev/worklog-hub && bun run commit:plan -- --project api-bluvoice"
-```
-
-**PowerShell:**
-
-```powershell
-function ws { Set-Location ~/dev/worklog-hub; bun run worklog:start }
-function we { Set-Location ~/dev/worklog-hub; bun run worklog:end }
-function wstatus { Set-Location ~/dev/worklog-hub; bun run worklog:status }
-function wcfront { Set-Location ~/dev/worklog-hub; bun run commit:plan -- --project app-bluvoice }
-function wcback { Set-Location ~/dev/worklog-hub; bun run commit:plan -- --project api-bluvoice }
-```
-
----
-
----
-
-## Backlog Vivo
-
-Módulo web integrado en worklog-hub que centraliza todos los pendientes detectados durante conversaciones, sesiones de agentes y análisis de repositorios.
-
-### Qué problema resuelve
-
-Las conversaciones con ChatGPT o sesiones con agentes de código generan pendientes continuamente: bugs detectados, deuda técnica identificada, features postergadas, implementaciones que un agente dice haber completado pero que nadie verificó. Sin un sistema que los capture y traccee, esos pendientes se pierden o quedan dispersos en chats.
-
-Backlog Vivo no es una lista de tareas. Representa la **trazabilidad** entre:
-- algo que se mencionó en una conversación,
-- algo que se aceptó como trabajo real,
-- algo que se le pidió a un agente,
-- lo que el agente dice haber implementado,
-- la evidencia disponible de que fue implementado,
-- la validación humana final.
-
-### Tipos de pendiente
-
-| Tipo | Significado |
-|------|-------------|
-| `BUG` | Error encontrado o reportado |
-| `TECH_DEBT` | Deuda técnica identificada |
-| `FEATURE` | Feature pendiente de implementar |
-| `VALIDATION_PENDING` | Algo que requiere revisión o prueba |
-| `OPEN_DECISION` | Decisión técnica sin tomar |
-| `IMPLEMENTATION_NOT_VERIFIED` | Agente dice haberlo implementado — sin validar |
-| `IDEA` | Idea mencionada, no comprometida |
-
-### Estados y flujo
-
-```
-DETECTED → ACCEPTED → ASSIGNED_TO_AGENT → IMPLEMENTED_CLAIMED → NEEDS_MANUAL_TEST → VERIFIED_DONE
-    ↓           ↓                                                                            ↑
-DISCARDED   DISCARDED                                                               REOPENED ←
-```
-
-| Estado | Significado |
-|--------|-------------|
-| `DETECTED` | Recién detectado, sin revisar (Inbox) |
-| `ACCEPTED` | Aceptado como trabajo real a hacer |
-| `ASSIGNED_TO_AGENT` | Delegado a Claude Code, OpenCode u otro agente |
-| `IMPLEMENTED_CLAIMED` | Un agente dice haberlo implementado |
-| `IMPLEMENTED_SUSPECTED` | Hay evidencia parcial de implementación |
-| `NEEDS_MANUAL_TEST` | Requiere validación manual antes de cerrar |
-| `VERIFIED_DONE` | Confirmado como resuelto (solo por humano) |
-| `DISCARDED` | Descartado — no aplica o quedó obsoleto |
-| `REOPENED` | Reabierto tras ser cerrado o descartado |
-
-**Regla importante:** `VERIFIED_DONE` solo puede ser asignado por humano. Nunca automáticamente.
-
----
-
-### Cómo levantar el servidor
-
-```bash
-bun run backlog
-```
-
-Abre en el navegador: `http://localhost:3131`
-
-Puerto configurable:
-```bash
-BACKLOG_PORT=4000 bun run backlog
-```
-
-### Datos de ejemplo (desarrollo)
+Para poblar la base con ítems de prueba:
 
 ```bash
 bun run backlog:seed
 ```
 
-Inserta 3 ítems de ejemplo. Solo funciona si la base está vacía; no sobreescribe datos existentes.
+Solo funciona con la base vacía. No sobreescribe datos existentes.
 
----
+### Resetear la base de datos
 
-### Persistencia
-
-La base de datos SQLite se crea automáticamente en:
-```
-data/worklog-hub.sqlite
-```
-
-El esquema se inicializa automáticamente al arrancar el servidor. No requiere configuración manual.
-
-El directorio `data/` está en `.gitignore` para no versionar la base.
-
-Si necesitás resetear los datos:
 ```bash
+# Windows
+del data\worklog-hub.sqlite
+bun run backlog
+
+# macOS/Linux
 rm data/worklog-hub.sqlite
 bun run backlog
 ```
 
 ---
 
-### Integración con ChatGPT via MCP
+## Primer uso
 
-Worklog Hub expone un servidor MCP en `POST /mcp` que permite conectar ChatGPT directamente para registrar pendientes durante conversaciones.
+1. Abrí Worklog Hub (`bun run dev` o la app desktop).
+2. Explorá el **Inbox — Detectados** para ver los pendientes sin revisar.
+3. Hacé clic en un ítem para abrir el panel de detalle.
+4. Usá las acciones rápidas para aceptar, descartar o cambiar el estado.
+5. Para crear un pendiente manualmente, usá el botón **+** en la barra superior.
+6. Si querés conectar ChatGPT, navegá a **Integración ChatGPT / MCP** en el sidebar.
 
-#### Flujo de uso
+---
+
+## Configurar integración con ChatGPT
+
+Para la experiencia completa necesitás **dos cosas**:
+
+| Componente | Para qué sirve |
+|---|---|
+| Conector MCP | ChatGPT tiene herramientas para leer y escribir en Worklog Hub |
+| Project Instructions | ChatGPT sabe cuándo y cómo detectar pendientes de forma activa |
+
+Solo conectar el MCP **no activa** la detección automática. Necesitás ambos.
+
+### Paso 1 — Crear cuenta en ngrok
+
+Registrate gratis en [ngrok.com](https://ngrok.com). El plan gratuito incluye un Static Domain (dominio estable).
+
+### Paso 2 — Obtener Authtoken y Static Domain
+
+Desde tu panel de ngrok:
+- **Authtoken**: en *Your Authtoken*
+- **Static Domain**: en *Cloud Edge → Domains* — tiene la forma `algo-random.ngrok-free.app`
+
+### Paso 3 — Instalar ngrok
+
+Descargá ngrok desde [ngrok.com/download](https://ngrok.com/download).
+
+En Windows también podés instalarlo desde la **Microsoft Store** — Worklog Hub lo detecta automáticamente.
+
+### Paso 4 — Configurar ngrok en Worklog Hub
+
+Con la app abierta, navegá a **Integración ChatGPT / MCP** en el sidebar y completá:
+- **Token de autenticación**: pegá el Authtoken de ngrok
+- **Dominio estático**: pegá solo el hostname (`algo-random.ngrok-free.app`, sin `https://`)
+- Opcionalmente activá **"Activar automáticamente al abrir"**
+
+Hacé clic en **Guardar y activar túnel**.
+
+### Paso 5 — Copiar la URL MCP
+
+Una vez que el túnel esté activo, Worklog Hub mostrará la URL pública. Copiala con el botón **Copiar URL MCP**.
+
+Tiene la forma: `https://algo-random.ngrok-free.app/mcp`
+
+### Paso 6 — Crear el conector en ChatGPT
+
+1. En ChatGPT → **Settings** → **Apps & Connectors**
+2. **Advanced settings** → **Developer mode** → **Create connector**
+3. Pegá la URL MCP que copiaste
+4. Guardá
+
+El conector se configura una sola vez. La URL no cambia entre sesiones gracias al Static Domain.
+
+### Paso 7 — Pegar las Project Instructions
+
+En ChatGPT, abrí el Project donde trabajás:
+1. Menú de tres puntos del Project → **Project settings**
+2. En **Project Instructions**, pegá el bloque que encontrás en la sección **"Paso final: enseñarle a ChatGPT cuándo registrar pendientes"** dentro de la app
+
+Las instrucciones aplican a todos los chats de ese Project. Podés adaptarlas para distintos proyectos.
+
+### Paso 8 — Probar la integración
+
+Con Worklog Hub abierto y el túnel activo, pegá este mensaje en un chat del Project con la app Worklog Hub activada:
 
 ```
-ChatGPT detecta un pendiente durante la conversación
-           ↓
-"¿Querés que lo registre en Worklog Hub?"
-           ↓
-Usuario confirma: "Sí"
-           ↓
-ChatGPT llama create_backlog_item
-           ↓
-Pendiente aparece en Inbox con source=CHATGPT
+Estoy probando la integración de Worklog Hub. Durante esta conversación, detectá si este asunto debe registrarse como pendiente y proponeme cargarlo si corresponde:
+
+"Revisar que la pantalla de configuración de integraciones muestre un error claro cuando ngrok no logra iniciar correctamente".
 ```
 
-**Importante:** ChatGPT nunca debe crear ítems sin confirmación explícita del usuario. El diseño del flujo lo asume.
+**Resultado esperado:**
+1. ChatGPT detecta que es un pendiente
+2. Consulta Worklog Hub para ver si ya existe
+3. Propone registrarlo con título, tipo y módulo
+4. Confirmás con "sí"
+5. El ítem aparece en Backlog Vivo → Detectados con `source=CHATGPT`
 
-#### Herramientas MCP disponibles
+---
+
+## Project Instructions recomendadas
+
+Pegá este bloque en las Project Instructions del Project de ChatGPT donde trabajás:
+
+```
+Cuando trabajemos sobre este proyecto, actuá también como detector de pendientes conversacionales.
+
+Cada vez que durante la conversación aparezca algo que:
+- queda sin cerrar,
+- se pospone,
+- se menciona como bug, deuda técnica o mejora futura,
+- se implementa pero no queda probado,
+- queda ambiguo,
+- requiere validación posterior,
+- o podría olvidarse al avanzar con otro tema,
+
+debes evaluar si corresponde registrarlo en Worklog Hub.
+
+Antes de proponer crear un nuevo pendiente:
+1. Consultá Worklog Hub para verificar si ya existe uno equivalente o muy similar.
+2. Si ya existe y sigue abierto, avisá que ese pendiente ya está registrado.
+3. Si existe pero está marcado como verificado o descartado, avisá que podría tratarse de una regresión, un caso distinto o algo ya resuelto.
+4. Si no existe, proponé crear un nuevo pendiente en Worklog Hub.
+
+No crees pendientes sin confirmación explícita del usuario.
+
+Cuando propongas uno nuevo, resumilo con:
+- título,
+- tipo,
+- módulo o área,
+- por qué surgió,
+- por qué importa,
+- próximo paso sugerido.
+
+Si el usuario confirma, usá la herramienta de Worklog Hub para registrarlo.
+
+Worklog Hub es la fuente de verdad del estado de los pendientes. No dependas solo de memoria interna para saber si algo sigue abierto, fue descartado o ya se verificó.
+
+Si la herramienta de Worklog Hub no está disponible en el chat, avisá brevemente que no podés consultar ni registrar pendientes en ese momento y seguí ayudando con la conversación normalmente.
+```
+
+---
+
+## Herramientas MCP disponibles
 
 | Herramienta | Tipo | Descripción |
-|-------------|------|-------------|
+|---|---|---|
 | `create_backlog_item` | Escritura | Crea un pendiente (siempre `source=CHATGPT`, `status=DETECTED`) |
-| `list_backlog_items` | Lectura | Lista con filtros por estado, tipo, módulo, búsqueda |
+| `list_backlog_items` | Lectura | Lista con filtros por estado, tipo, módulo, búsqueda libre |
 | `get_backlog_item` | Lectura | Detalle completo por ID |
-| `update_backlog_item_status` | Escritura | Transiciona el estado con validación |
+| `update_backlog_item_status` | Escritura | Transiciona el estado con validación de reglas de negocio |
 
-#### Cómo conectarlo desde ChatGPT
+El MCP implementa el protocolo JSON-RPC 2.0 (MCP spec 2025-03-26, Streamable HTTP transport) en `POST /mcp`.
 
-ChatGPT requiere que el servidor MCP sea accesible por **HTTPS**. En desarrollo local, usá un túnel:
+---
 
-**Opción A — Cloudflare Tunnel (recomendado):**
-```bash
-# En una terminal: levantás el servidor
-bun run backlog
+## Cómo usar Worklog Hub en la práctica
 
-# En otra terminal: exponés por HTTPS
-npx cloudflared tunnel --url http://localhost:3131
+### Caso 1 — Registrar un bug desde ChatGPT
 ```
-Cloudflared te dará una URL tipo `https://abc-xyz.trycloudflare.com`.
+Usuario: "Encontré que el filtro de cheques no trae todos los registros cuando hay más de 100."
 
-**Opción B — ngrok:**
-```bash
-npx ngrok http 3131
-```
+ChatGPT: Detecté un bug: "Filtro de cheques no muestra todos los registros con más de 100 ítems".
+         ¿Lo registro en Worklog Hub?
 
-Luego en ChatGPT:
-1. Abrí ChatGPT → Explorar GPTs → Crear GPT → Configurar → Acciones
-2. Agregá una acción con esquema OpenAPI apuntando a tu URL del túnel
-3. O si ChatGPT soporta MCP nativo: configurá el servidor MCP con la URL del túnel + `/mcp`
-
-El endpoint MCP sigue el protocolo JSON-RPC 2.0 (MCP spec 2025-03-26, Streamable HTTP transport).
-
-#### Ejemplo de interacción
-
-```
-Usuario: "Che, encontré que el filtro Todo de cheques no muestra todos los registros"
-
-ChatGPT: Detecté un bug: "Filtro Todo de cheques no muestra todos los registros". 
-         ¿Lo registro en tu Worklog Hub?
-
-Usuario: Sí, en el módulo Cheques
+Usuario: Sí, módulo Cheques, área Frontend.
 
 ChatGPT: [llama create_backlog_item]
-         → title: "Filtro Todo de cheques no muestra todos los registros"
-         → type: "BUG"
-         → module: "Cheques"
-
-Resultado: El bug aparece en Inbox con estado DETECTED, listo para revisar.
+         Registrado con ID abc123 — aparece en Inbox con estado DETECTED.
 ```
 
+### Caso 2 — Revisar pendientes abiertos desde ChatGPT
 ```
-Usuario: "¿Qué bugs tengo pendientes?"
+Usuario: "¿Qué bugs tengo pendientes en el módulo Cheques?"
 
-ChatGPT: [llama list_backlog_items con type="BUG" y status="DETECTED"]
-         → Responde con la lista de bugs detectados
+ChatGPT: [llama list_backlog_items con type="BUG" y module="Cheques"]
+         → Responde con la lista filtrada
 ```
 
----
+### Caso 3 — Marcar una tarea como verificada
+Desde la app, abrí el detalle del ítem y usá la acción **"Verificar"** — solo disponible para humanos. `VERIFIED_DONE` nunca se asigna automáticamente.
 
-### Motor de reconciliación (preparado, no implementado)
+### Caso 4 — Generar prompt para resolver un bug
+1. Abrí el detalle del pendiente
+2. Usá la opción **Generar prompt** seleccionando tipo (Implementación, Auditoría, etc.) y target (Frontend / Backend / Fullstack)
+3. El prompt generado se puede copiar o enviar a un agente
 
-El modelo de datos incluye:
-- Entidad `BacklogEvidence` vinculada a cada ítem
-- Campos para relacionar ítems con commits (`relatedCommitId`), sesiones de agentes (`relatedAgentSessionId`) y worklogs (`relatedWorklogId`)
-- Campo `confidence` (0-100) para inferencias futuras
-- Estados como `IMPLEMENTED_CLAIMED`, `IMPLEMENTED_SUSPECTED` y `NEEDS_MANUAL_TEST` pensados para ser asignados automáticamente por un motor de análisis
-
-El motor futuro podría:
-1. Analizar commits recientes y sesiones de Claude Code/OpenCode
-2. Buscar ítems cuyo contenido coincida con los cambios
-3. Actualizar el estado sugerido a `IMPLEMENTED_SUSPECTED` o `NEEDS_MANUAL_TEST`
-4. **Nunca** marcar `VERIFIED_DONE` automáticamente
+### Caso 5 — Debatir una tarea antes de implementarla
+Desde el detalle del ítem, usá la opción para preparar un prompt de debate y abrirlo en el Project de ChatGPT configurado.
 
 ---
 
-## 8. Qué queda fuera del MVP
-
-- **ChatGPT export/history** — no integrado todavía
-- **Worktale** — no integrado
-- **DevLog** — no integrado
-- **UI web** — no existe ni está planeada
-- **Base de datos** — no se usa ninguna; todo es Markdown + Git
-- **Tableros tipo Jira/Linear** — fuera del scope intencional
-
----
-
-## 9. Uso diario recomendado
-
-| Momento | Comando | Qué hace |
-|---------|---------|----------|
-| Al arrancar | `ws` | Resume contexto de trabajo |
-| Durante el día | editar `memory/current-focus.md` | Mantener foco actualizado |
-| Al terminar | `we` | Cierra el día, genera nota |
-| Rápido check | `wstatus` | Ver estado sin IA |
-
-La memoria curada (`current-focus.md`, `backlog.md`, `decisions.md`) es la fuente más confiable. Mantenla actualizada.
-
----
-
-## 10. Advertencia de privacidad
-
-**Este sistema puede enviar resúmenes de tus sesiones de Claude Code y OpenCode a la API de IA configurada.**
-
-- No incluyas secretos, API keys ni datos sensibles en los prompts de tus sesiones de agentes.
-- Las notas Markdown se guardan localmente y no se envían a ningún servicio.
-- El `.env` con tu API key nunca se loguea ni se incluye en ningún archivo generado.
-- Usa `maxAgentSessions` y `maxAgentMessagesPerSession` para limitar cuánto contexto de agentes se envía.
-
----
-
-## Estructura del proyecto
+## Estructura del repositorio
 
 ```
 worklog-hub/
-  scripts/
-    worklog-start.ts     # bun run worklog:start
-    worklog-end.ts       # bun run worklog:end
-    worklog-status.ts    # bun run worklog:status
-    commit-plan.ts       # bun run commit:plan
-    backlog-server.ts    # bun run backlog  ← servidor Backlog Vivo
-    backlog-seed.ts      # bun run backlog:seed  ← datos de ejemplo
-  src/
-    config/              # carga de .env y worklog.config.json
-    collectors/          # git, memoria, Claude Code, OpenCode
-    ai/                  # cliente OpenAI, prompts, tipos
-    memory/              # escritura de notas y current-focus
-    utils/               # exec, dates, files, logger, path
-    backlog/             # módulo Backlog Vivo
-      domain/types.ts    # BacklogItem, BacklogEvidence, tipos
-      db/                # SQLite: conexión, migraciones, esquema
-      repository/        # acceso a datos (BacklogItemRepository, BacklogEvidenceRepository)
-      service/           # lógica de negocio (transiciones de estado, reglas)
-      api/               # handlers HTTP REST (/api/backlog/*)
-      mcp/               # servidor MCP (JSON-RPC 2.0, herramientas para ChatGPT)
-  public/
-    index.html           # frontend Backlog Vivo
-    styles.css           # tema oscuro
-    app.js               # SPA vanilla JS
-  data/
-    worklog-hub.sqlite   # base SQLite (creada automáticamente, en .gitignore)
-  memory/
-    current-focus.md     # foco actual (editado automáticamente)
-    backlog.md           # pendientes a mediano plazo
-    decisions.md         # decisiones técnicas
-    daily/               # notas diarias YYYY-MM-DD.md
-    .backup/             # backups de current-focus
+├── scripts/
+│   ├── backlog-server.ts     # Servidor principal (API REST + MCP) — bun run backlog
+│   ├── backlog-seed.ts       # Datos de ejemplo — bun run backlog:seed
+│   ├── dev-all.ts            # Orquestador de desarrollo — bun run dev / desktop
+│   ├── worklog-start.ts      # CLI: arrancar el día — bun run worklog:start
+│   ├── worklog-end.ts        # CLI: cerrar el día — bun run worklog:end
+│   ├── worklog-status.ts     # CLI: estado rápido — bun run worklog:status
+│   └── commit-plan.ts        # CLI: propuesta de commits — bun run commit:plan
+├── src/
+│   ├── App.tsx               # Root de la SPA
+│   ├── main.tsx              # Entry point React
+│   ├── backlog/
+│   │   ├── domain/types.ts   # Tipos de dominio
+│   │   ├── db/               # SQLite: conexión y migraciones
+│   │   ├── repository/       # Acceso a datos
+│   │   ├── service/          # Lógica de negocio y reglas de estado
+│   │   ├── api/              # Handlers HTTP (REST + settings + ngrok)
+│   │   └── mcp/              # Servidor MCP (JSON-RPC 2.0)
+│   ├── components/
+│   │   ├── backlog/          # ItemCard, ItemList, DetailPanel, KpiBar, FilterBar
+│   │   ├── settings/         # ChatGptSettings, NgrokStatusPanel
+│   │   ├── agents/           # AgentTasksSection
+│   │   ├── prompts/          # PromptSection
+│   │   ├── modals/           # CreateItem, AddEvidence, Dispatch, etc.
+│   │   ├── layout/           # Sidebar, Topbar
+│   │   ├── shared/           # FadeIn, MetricCard, AnimatedList, etc.
+│   │   └── ui/               # shadcn/ui components
+│   ├── lib/
+│   │   ├── api.ts            # Cliente HTTP hacia el servidor
+│   │   ├── types.ts          # Tipos TypeScript del frontend
+│   │   └── constants.ts      # Labels, mapeos de estado, TAB_CONFIG
+│   └── hooks/
+│       └── useTheme.ts       # Toggle dark/light mode
+├── src-tauri/
+│   ├── tauri.conf.json       # Configuración Tauri (productName, bundler, sidecar)
+│   ├── Cargo.toml            # Dependencias Rust
+│   ├── src/lib.rs            # Setup Tauri: arranca el sidecar del servidor
+│   └── binaries/             # Ejecutables compilados (en .gitignore)
+├── data/
+│   └── worklog-hub.sqlite    # Base SQLite (auto-creada, en .gitignore)
+└── memory/                   # Notas y contexto del CLI de worklog (local)
 ```
+
+---
+
+## Persistencia y privacidad
+
+- **Base de datos**: SQLite en `data/worklog-hub.sqlite`, creada automáticamente al arrancar. No se versiona (está en `.gitignore`).
+- **Sin cuenta remota**: Worklog Hub no requiere autenticación propia ni envía datos a ningún servidor externo.
+- **ngrok authtoken**: se guarda localmente en SQLite. Nunca se loguea completo ni se envía fuera del dispositivo.
+- **ngrok**: si está activo, el tráfico de la API MCP pasa por los servidores de ngrok hacia ChatGPT. El contenido de los pendientes es visible para ngrok en tránsito.
+- **CLI de worklog**: los scripts `worklog:start` y `worklog:end` pueden enviar resúmenes de sesiones de agentes a una API de IA si se configura una en `.env`. Esto es opcional y configurable.
+
+---
+
+## Estado del proyecto
+
+| Módulo | Estado |
+|---|---|
+| Backlog Vivo (CRUD, estados, filtros, detalle) | Funcional |
+| Servidor MCP y herramientas | Funcional |
+| Integración ngrok con Static Domain | Funcional |
+| App web (`bun run dev`) | Funcional |
+| App desktop Windows (`bun run desktop`) | Funcional en desarrollo |
+| Build/instalador Windows | Funcional — sin release publicado |
+| Build macOS / Linux | En evolución — scripts disponibles, no probado extensivamente |
+| CLI de worklog (start/end/status) | Funcional — feature separada del Backlog Vivo |
+| Reconciliación automática con commits/agentes | Diseñado, no implementado |
+| Releases descargables | Pendiente |
+
+---
+
+## Roadmap
+
+- Releases instalables (`.exe`, `.dmg`) publicados en GitHub
+- Soporte macOS y Linux verificado y documentado
+- Reconciliación automática: analizar commits y sesiones de agentes para actualizar estados de pendientes
+- Importar/exportar backlog
+- Múltiples proyectos con vistas separadas
+- Historial de cambios por ítem
+
+---
+
+## Contribuir
+
+Worklog Hub está pensado como una herramienta abierta. Si encontrás errores, tenés ideas para mejorar flujos, querés sumar integraciones o mejorar la documentación, las contribuciones son bienvenidas.
+
+**Cómo contribuir:**
+
+1. Hacé fork del repositorio
+2. Creá un branch desde `main` (`git checkout -b feature/mi-mejora`)
+3. Implementá el cambio
+4. Abrí un Pull Request con descripción del problema que resuelve
+
+**Áreas donde las contribuciones tienen más impacto ahora mismo:**
+- Soporte y testing en macOS y Linux
+- Capturas y documentación visual
+- Mejoras de UX en el flujo de gestión de pendientes
+- Integración con más herramientas (Linear, Notion, Jira)
+- Tests automatizados
+
+Si encontrás un bug o tenés una idea, abrí un [Issue](https://github.com/tu-usuario/worklog-hub/issues).
+
+---
+
+## Licencia
+
+> Este repositorio todavía no tiene una licencia definida. Si vas a usarlo, modificarlo o redistribuirlo, tené en cuenta que sin licencia explícita aplican las restricciones de copyright por defecto. Se recomienda definir una licencia open source (MIT, Apache 2.0 o similar) antes de una publicación amplia.
+
+---
+
+## Soporte
+
+- **Bugs y sugerencias**: abrí un [Issue](https://github.com/tu-usuario/worklog-hub/issues) en GitHub
+- **Preguntas sobre la integración ChatGPT/MCP**: la sección **Integración ChatGPT / MCP** dentro de la app tiene una guía paso a paso completa con prueba final incluida

@@ -4,16 +4,19 @@ import { BacklogItemRepository } from "../src/backlog/repository/backlog-item-re
 import { BacklogEvidenceRepository } from "../src/backlog/repository/backlog-evidence-repository.ts";
 import { BacklogPromptRepository } from "../src/backlog/repository/backlog-prompt-repository.ts";
 import { AgentTaskRepository } from "../src/backlog/repository/agent-task-repository.ts";
+import { SettingsRepository } from "../src/backlog/repository/settings-repository.ts";
 import { BacklogService } from "../src/backlog/service/backlog-service.ts";
 import { AgentExecutor } from "../src/backlog/service/agent-executor.ts";
+import { NgrokTunnelService } from "../src/backlog/service/ngrok-tunnel-service.ts";
 import { createApiHandler } from "../src/backlog/api/handlers.ts";
 import { createMcpHandler } from "../src/backlog/mcp/handler.ts";
+import { createSettingsHandler } from "../src/backlog/api/settings-handlers.ts";
 import { loadConfig } from "../src/config/load-config.ts";
 import type { StackConfig } from "../src/config/load-config.ts";
 
 const HUB_ROOT = join(import.meta.dir, "..");
 const PORT = Number(process.env["BACKLOG_PORT"] ?? 3131);
-const PUBLIC_DIR = join(HUB_ROOT, "public");
+const PUBLIC_DIR = join(HUB_ROOT, "dist");
 
 // Resolve project paths and stack config for agent dispatch
 let projectPaths = { frontend: null as string | null, backend: null as string | null };
@@ -32,18 +35,22 @@ try {
 }
 
 const db = getDb(HUB_ROOT);
+
 const itemRepo     = new BacklogItemRepository(db);
 const evidenceRepo = new BacklogEvidenceRepository(db);
 const promptRepo   = new BacklogPromptRepository(db);
 const taskRepo     = new AgentTaskRepository(db);
+const settingsRepo = new SettingsRepository(db);
 const executor     = new AgentExecutor(HUB_ROOT);
 
 const service = new BacklogService(
   itemRepo, evidenceRepo, promptRepo, taskRepo, executor, projectPaths, stack
 );
 
-const apiHandler = createApiHandler(service);
-const mcpHandler = createMcpHandler(service);
+const ngrokService     = new NgrokTunnelService(settingsRepo);
+const apiHandler       = createApiHandler(service);
+const mcpHandler       = createMcpHandler(service);
+const settingsHandler  = createSettingsHandler(settingsRepo, ngrokService, PORT);
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -66,6 +73,10 @@ Bun.serve({
 
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    if (pathname.startsWith("/api/settings") || pathname === "/api/health") {
+      return addCors(await settingsHandler(req));
     }
 
     if (pathname.startsWith("/api/")) {
@@ -99,9 +110,21 @@ console.log(`
   Frontend: ${projectPaths.frontend ?? "(no configurado)"}
   Backend:  ${projectPaths.backend  ?? "(no configurado)"}
 
-  Para exponer el MCP por HTTPS en local:
-    npx cloudflared tunnel --url http://localhost:${PORT}
-    (o: npx ngrok http ${PORT})
-
   Presioná Ctrl+C para detener.
 `);
+
+// Autoarranque de ngrok si está configurado
+const autostart = settingsRepo.get("ngrok_autostart");
+if (autostart === "true") {
+  const token  = settingsRepo.get("ngrok_authtoken");
+  const domain = settingsRepo.get("ngrok_dev_domain");
+  if (token && domain) {
+    console.log(`  ngrok: iniciando túnel hacia ${domain}…`);
+    // Pequeño delay para que el servidor HTTP esté listo primero
+    setTimeout(() => {
+      ngrokService.start(PORT).catch((err) => {
+        console.error("  ngrok: error al iniciar:", err);
+      });
+    }, 1500);
+  }
+}

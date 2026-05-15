@@ -97,9 +97,18 @@ const SCHEMA_V2 = `
   CREATE INDEX IF NOT EXISTS idx_at_created   ON agent_tasks(created_at);
 `;
 
+const SCHEMA_V3 = `
+  CREATE TABLE IF NOT EXISTS integration_settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+`;
+
 const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 1, sql: SCHEMA_V1 },
   { version: 2, sql: SCHEMA_V2 },
+  { version: 3, sql: SCHEMA_V3 },
 ];
 
 export function runMigrations(db: Database): void {

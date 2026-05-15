@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "types": ["bun-types"]
+  },
+  "include": [
+    "scripts/**/*",
+    "src/backlog/**/*",
+    "src/ai/**/*",
+    "src/collectors/**/*",
+    "src/config/**/*",
+    "src/memory/**/*",
+    "src/utils/**/*"
+  ]
+}
