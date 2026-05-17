@@ -37,6 +37,10 @@ export const TAB_CONFIG: Record<TabKey, { label: string; desc: string }> = {
     label: "Integración ChatGPT / MCP",
     desc: "Servidor MCP local y túnel ngrok para conectar con ChatGPT",
   },
+  DAILY_SUMMARY: {
+    label: "Resumen del día",
+    desc: "Resúmenes diarios generados por ChatGPT o manualmente",
+  },
 };
 
 export const TAB_STATUS_MAP: Record<TabKey, BacklogStatus[]> = {
@@ -50,6 +54,7 @@ export const TAB_STATUS_MAP: Record<TabKey, BacklogStatus[]> = {
   REOPENED: ["REOPENED"],
   ALL: [],
   CHATGPT_MCP: [],
+  DAILY_SUMMARY: [],
 };
 
 export const TYPE_LABELS: Record<BacklogType, string> = {

@@ -3,10 +3,13 @@ import type {
   AgentTask,
   AgentTaskStatus,
   AgentType,
+  AISettings,
   BacklogItem,
   BacklogPrompt,
   BacklogStats,
   BacklogStatus,
+  DailyContext,
+  DailySummary,
   Evidence,
   ListItemsParams,
   NgrokSettings,
@@ -105,4 +108,48 @@ export const SettingsAPI = {
   getNgrokStatus: () => settingsFetch<NgrokState>("/api/settings/ngrok/status"),
   startNgrok: () => settingsFetch<NgrokState>("/api/settings/ngrok/start", { method: "POST" }),
   stopNgrok: () => settingsFetch<NgrokState>("/api/settings/ngrok/stop", { method: "POST" }),
+};
+
+const SUMMARY_BASE = `${API_ORIGIN}/api/daily-summary`;
+
+async function summaryFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const res = await fetch(SUMMARY_BASE + path, opts);
+  return handleResponse<T>(res);
+}
+
+export const DailySummaryAPI = {
+  get: (date: string, project?: string) => {
+    const params = new URLSearchParams({ date });
+    if (project) params.set("project", project);
+    return summaryFetch<DailySummary | null>(`?${params}`);
+  },
+  listRecent: (limit = 30) =>
+    summaryFetch<DailySummary[]>(`/recent?limit=${limit}`),
+  getContext: (date: string, project?: string) => {
+    const params = new URLSearchParams({ date });
+    if (project) params.set("project", project);
+    return summaryFetch<DailyContext>(`/context?${params}`);
+  },
+  save: (data: { date: string; content: string; title?: string; project?: string }) =>
+    summaryFetch<DailySummary>("", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  generate: (date: string, project?: string) =>
+    summaryFetch<DailySummary>("/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, project }),
+    }),
+};
+
+export const AISettingsAPI = {
+  get: () => settingsFetch<AISettings>("/api/settings/ai"),
+  save: (data: Partial<AISettings>) =>
+    settingsFetch<AISettings>("/api/settings/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
 };

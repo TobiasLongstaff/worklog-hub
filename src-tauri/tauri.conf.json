@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "identifier": "com.workloghub.dev",
   "build": {
+    "beforeDevCommand": "bunx vite",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "bun run build:server:win",
     "frontendDist": "../dist"

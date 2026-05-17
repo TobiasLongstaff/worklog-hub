@@ -52,6 +52,10 @@ export function Sidebar({ activeTab, stats, onSelectTab }: SidebarProps) {
       title: "Integraciones",
       items: [{ key: "CHATGPT_MCP", label: "ChatGPT / MCP" }],
     },
+    {
+      title: "Resúmenes",
+      items: [{ key: "DAILY_SUMMARY", label: "Resumen del día" }],
+    },
   ];
 
   return (

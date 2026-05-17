@@ -105,10 +105,34 @@ const SCHEMA_V3 = `
   );
 `;
 
+const SCHEMA_V4 = `
+  CREATE TABLE IF NOT EXISTS daily_summaries (
+    id         TEXT PRIMARY KEY,
+    date       TEXT NOT NULL,
+    project    TEXT,
+    title      TEXT,
+    content    TEXT NOT NULL DEFAULT '',
+    source     TEXT NOT NULL DEFAULT 'MANUAL',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_ds_date    ON daily_summaries(date);
+  CREATE INDEX IF NOT EXISTS idx_ds_project ON daily_summaries(project);
+`;
+
+const SCHEMA_V5 = `
+  ALTER TABLE daily_summaries ADD COLUMN model TEXT;
+  ALTER TABLE daily_summaries ADD COLUMN context_snapshot_json TEXT;
+  ALTER TABLE daily_summaries ADD COLUMN prompt_snapshot TEXT;
+`;
+
 const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 1, sql: SCHEMA_V1 },
   { version: 2, sql: SCHEMA_V2 },
   { version: 3, sql: SCHEMA_V3 },
+  { version: 4, sql: SCHEMA_V4 },
+  { version: 5, sql: SCHEMA_V5 },
 ];
 
 export function runMigrations(db: Database): void {

@@ -1,4 +1,5 @@
 import type { BacklogService } from "../service/backlog-service.ts";
+import type { DailySummaryService } from "../service/daily-summary-service.ts";
 import type {
   BacklogItemArea,
   BacklogItemStatus,
@@ -180,6 +181,75 @@ const TOOLS = [
       required: ["id", "status"],
     },
   },
+  {
+    name: "get_daily_summary_context",
+    description:
+      "Recupera el contexto estructurado de un día de trabajo desde Worklog Hub: " +
+      "pendientes creados, aceptados, verificados y descartados, prompts generados y tareas de agentes. " +
+      "Usar para redactar el resumen diario.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "Fecha en formato YYYY-MM-DD. Si se omite, usa la fecha de hoy.",
+        },
+        project: {
+          type: "string",
+          description: "Nombre del proyecto para filtrar (opcional).",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_daily_summary",
+    description:
+      "Consulta si ya existe un resumen diario guardado en Worklog Hub para una fecha. " +
+      "Usar antes de generar uno nuevo para evitar duplicados.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "Fecha en formato YYYY-MM-DD. Si se omite, usa hoy.",
+        },
+        project: {
+          type: "string",
+          description: "Nombre del proyecto (opcional).",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "save_daily_summary",
+    description:
+      "Guarda el resumen diario generado en Worklog Hub. " +
+      "SOLO usar cuando el usuario haya confirmado explícitamente que quiere guardarlo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "Fecha del resumen en formato YYYY-MM-DD.",
+        },
+        content: {
+          type: "string",
+          description: "Contenido completo del resumen generado.",
+        },
+        title: {
+          type: "string",
+          description: "Título breve del resumen (opcional).",
+        },
+        project: {
+          type: "string",
+          description: "Nombre del proyecto al que pertenece el resumen (opcional).",
+        },
+      },
+      required: ["date", "content"],
+    },
+  },
 ];
 
 interface JsonRpcRequest {
@@ -211,7 +281,8 @@ function rpcErr(
 async function handleMethod(
   method: string,
   params: unknown,
-  service: BacklogService
+  service: BacklogService,
+  dailySummaryService: DailySummaryService
 ): Promise<unknown> {
   const p = params as Record<string, unknown>;
 
@@ -234,17 +305,22 @@ async function handleMethod(
   if (method === "tools/call") {
     const toolName = p["name"] as string;
     const args = (p["arguments"] ?? {}) as Record<string, unknown>;
-    const text = await callTool(toolName, args, service);
+    const text = await callTool(toolName, args, service, dailySummaryService);
     return { content: [{ type: "text", text }] };
   }
 
   throw Object.assign(new Error(`Método desconocido: ${method}`), { code: -32601 });
 }
 
+function todayDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function callTool(
   name: string,
   args: Record<string, unknown>,
-  service: BacklogService
+  service: BacklogService,
+  dailySummaryService: DailySummaryService
 ): Promise<string> {
   if (name === "create_backlog_item") {
     const item = service.createItem({
@@ -309,10 +385,83 @@ async function callTool(
     }
   }
 
+  if (name === "get_daily_summary_context") {
+    const date = (args["date"] as string | undefined) ?? todayDate();
+    const project = args["project"] as string | undefined;
+    const ctx = dailySummaryService.getContextForDate(date, project);
+
+    function fmtItems(items: typeof ctx.createdItems): string {
+      if (items.length === 0) return "  (ninguno)";
+      return items
+        .map((it) => `  - [${it.id.slice(0, 8)}] ${it.title} (${it.type}${it.module ? `, módulo: ${it.module}` : ""})`)
+        .join("\n");
+    }
+
+    return [
+      `Contexto del día: ${ctx.date}${ctx.project ? ` — proyecto: ${ctx.project}` : ""}`,
+      "",
+      `DETECTADOS HOY (${ctx.createdItems.length} nuevo(s)):`,
+      fmtItems(ctx.createdItems),
+      "",
+      `ACEPTADOS (${ctx.acceptedItems.length}):`,
+      fmtItems(ctx.acceptedItems),
+      "",
+      `VERIFICADOS Y CERRADOS (${ctx.verifiedItems.length}):`,
+      fmtItems(ctx.verifiedItems),
+      "",
+      `DESCARTADOS (${ctx.discardedItems.length}):`,
+      fmtItems(ctx.discardedItems),
+      "",
+      `PROMPTS GENERADOS HOY: ${ctx.promptsGenerated}`,
+      `TAREAS DE AGENTES: ${ctx.agentTasksCreated} creadas, ${ctx.agentTasksCompleted} completadas`,
+      "",
+      `INBOX ACTUAL: ${ctx.detectedTotal} pendiente(s) sin revisar en total`,
+    ].join("\n");
+  }
+
+  if (name === "get_daily_summary") {
+    const date = (args["date"] as string | undefined) ?? todayDate();
+    const project = args["project"] as string | undefined;
+    const summary = dailySummaryService.getSummary(date, project);
+    if (!summary) {
+      return `No hay resumen guardado para el ${date}${project ? ` (proyecto: ${project})` : ""}.`;
+    }
+    return [
+      `Resumen guardado para ${summary.date}:`,
+      `Título: ${summary.title ?? "(sin título)"}`,
+      `Fuente: ${summary.source}`,
+      `Guardado: ${summary.updatedAt}`,
+      "",
+      summary.content,
+    ].join("\n");
+  }
+
+  if (name === "save_daily_summary") {
+    const date = (args["date"] as string | undefined) ?? todayDate();
+    const content = String(args["content"] ?? "");
+    if (!content.trim()) return "Error: el contenido del resumen no puede estar vacío.";
+
+    const saved = dailySummaryService.saveSummary({
+      date,
+      content,
+      title: args["title"] as string | undefined,
+      project: args["project"] as string | undefined,
+      source: "CHATGPT_MCP",
+    });
+    return JSON.stringify({
+      ok: true,
+      id: saved.id,
+      date: saved.date,
+      title: saved.title,
+      source: saved.source,
+      updatedAt: saved.updatedAt,
+    });
+  }
+
   throw Object.assign(new Error(`Herramienta desconocida: ${name}`), { code: -32601 });
 }
 
-export function createMcpHandler(service: BacklogService) {
+export function createMcpHandler(service: BacklogService, dailySummaryService: DailySummaryService) {
   return async function handleMcpRequest(req: Request): Promise<Response> {
     if (req.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
@@ -336,7 +485,7 @@ export function createMcpHandler(service: BacklogService) {
     }
 
     try {
-      const result = await handleMethod(body.method, body.params, service);
+      const result = await handleMethod(body.method, body.params, service, dailySummaryService);
       return new Response(JSON.stringify(rpcOk(id, result)), {
         headers: { "Content-Type": "application/json" },
       });

@@ -1,7 +1,7 @@
 # Worklog Hub
 
 **Memoria de trabajo local-first para desarrolladores que trabajan con IA.**  
-Registrá pendientes, organizá tu backlog técnico, generá prompts y conectá ChatGPT directamente con tu trabajo.
+Registrá pendientes, organizá tu backlog técnico, generá resúmenes diarios y conectá ChatGPT directamente con tu trabajo.
 
 ---
 
@@ -12,6 +12,8 @@ Worklog Hub nació para resolver un problema concreto: los desarrolladores que t
 Un bug que se menciona de pasada, una decisión técnica que queda abierta, un refactor que un agente dice haber completado pero nadie verificó — sin un sistema que los capture y tracee, ese trabajo simplemente desaparece.
 
 Worklog Hub captura esos pendientes, los convierte en backlog estructurado, mantiene trazabilidad entre la conversación y el trabajo real, y permite conectar ChatGPT directamente para que detecte y registre pendientes durante tus conversaciones.
+
+Al final del día, genera un resumen automático usando OpenAI o Anthropic a partir de la actividad real del backlog, los commits de Git y los logs de agentes.
 
 **Para quién está pensado:**
 - Desarrolladores que trabajan diariamente con ChatGPT como herramienta de trabajo
@@ -30,6 +32,22 @@ El núcleo de la app. Una vista de todos los pendientes técnicos organizados po
 - Vista de detalle con contexto de origen, por qué importa y próximo paso sugerido
 - Filtros por estado, tipo, fuente y área técnica
 - KPIs del backlog siempre visibles
+
+### Resumen Diario con IA
+Genera automáticamente un resumen del día de trabajo a partir de evidencia real recopilada por la app.
+
+- Botón en la pestaña **Resumen del día** para generar con un clic
+- Contexto construido automáticamente desde:
+  - Actividad del backlog del día (ítems creados, aceptados, verificados, descartados)
+  - Prompts generados y tareas de agentes del día
+  - Actividad de Git (commits recientes por repositorio)
+  - Sesiones de Claude Code y OpenCode filtradas por fecha
+- Soporta **OpenAI** (GPT-4o y otros) y **Anthropic** (Claude Sonnet, Opus, Haiku)
+- Resumen renderizado con formato visual: secciones coloreadas, negritas, bullets estructurados
+- Vista colapsada con las primeras 3 secciones; botón para expandir el resto
+- Historial de resúmenes anteriores con navegación por fecha
+- Cada resumen guarda el snapshot del contexto y del prompt para auditabilidad
+- Las API keys se guardan localmente en SQLite; nunca salen del dispositivo
 
 ### Integración con ChatGPT vía MCP
 Worklog Hub expone un servidor MCP local (Model Context Protocol) que permite conectar ChatGPT directamente.
@@ -83,6 +101,7 @@ Scripts para arrancar y cerrar el día de trabajo con síntesis por IA:
 | Base de datos | SQLite (nativo de Bun) |
 | Desktop | Tauri v2 + Rust |
 | Protocolo IA | MCP JSON-RPC 2.0 (spec 2025-03-26) |
+| Generación de resúmenes | OpenAI API o Anthropic API (configurable) |
 | Túnel HTTPS | ngrok (static domain) |
 
 ---
@@ -92,6 +111,7 @@ Scripts para arrancar y cerrar el día de trabajo con síntesis por IA:
 > Las capturas se incorporarán próximamente. La app incluye:
 > - Dashboard con KPIs del backlog
 > - Vista Backlog Vivo con filtros y detalle de pendiente
+> - Resumen Diario con secciones coloreadas y formato visual
 > - Integración ChatGPT / MCP con estado del túnel en tiempo real
 
 ---
@@ -106,6 +126,7 @@ Scripts para arrancar y cerrar el día de trabajo con síntesis por IA:
 | Visual Studio C++ Build Tools | Solo Windows, para compilar Tauri. Instalar con workload "Desktop development with C++" |
 | [ngrok](https://ngrok.com) | Solo para integración con ChatGPT. Plan gratuito suficiente |
 | ChatGPT con Developer Mode | Solo para usar el conector MCP |
+| API key de OpenAI o Anthropic | Solo para generar resúmenes diarios con IA |
 
 ---
 
@@ -141,24 +162,77 @@ Levanta el servidor backend y abre la ventana Tauri conectada al frontend en des
 
 ### Opción C — Build de producción (app instalable)
 
-```bash
-# 1. Compilar el servidor como binario nativo (Windows)
-bun run build:server:win
+Requiere Rust, cargo y las C++ Build Tools instaladas (ver Requisitos).
 
-# 2. Build completo: frontend + servidor + empaquetado Tauri
+```bash
 bun run desktop:build
 ```
 
-El instalador queda en `src-tauri/target/release/bundle/`.
+Ese comando hace en secuencia:
+1. `vite build` → compila el frontend React a `dist/`
+2. `bun run build:server:win` → compila el servidor Bun a un `.exe` standalone (sin necesitar Bun instalado)
+3. `tauri build` → empaqueta todo en un installer NSIS
 
-Para otras plataformas, reemplazá el paso 1:
+El instalador queda en `src-tauri/target/release/bundle/nsis/`.
+
+Para otras plataformas, primero compilá el servidor y luego corré `tauri build`:
 ```bash
 bun run build:server:mac-arm   # macOS Apple Silicon
 bun run build:server:mac-x64   # macOS Intel
 bun run build:server:linux     # Linux x64
 ```
 
-> **Nota:** No hay releases descargables disponibles todavía. Por ahora la app se ejecuta desde el repositorio. Los instaladores se incorporarán más adelante.
+---
+
+## Datos en producción, primer arranque y updates
+
+### Separación de datos e instalación
+
+La app instalada separa por diseño el directorio de la aplicación del directorio de datos del usuario:
+
+```
+C:\Program Files\Worklog Hub\   ← binarios de la app (se reemplazan en cada update)
+C:\Users\{usuario}\AppData\Roaming\com.workloghub.dev\
+    ├── worklog.config.json     ← configuración de proyectos (creada en primer arranque)
+    └── data\
+        └── worklog-hub.sqlite  ← todos tus datos (nunca se toca en un update)
+```
+
+### Primer arranque
+
+Al abrir la app por primera vez, Worklog Hub crea automáticamente el directorio de datos y genera un `worklog.config.json` de plantilla con instrucciones. Editalo para apuntar a tus proyectos.
+
+### Updates
+
+Instalar una nueva versión encima de la anterior es seguro: el installer solo reemplaza los archivos en `Program Files`. Los datos en `AppData` nunca se tocan. Al abrir la nueva versión, las migraciones de schema de SQLite se aplican automáticamente si hay cambios.
+
+Flujo completo de un update:
+
+```bash
+# 1. Hacés cambios en el código
+# 2. Buildás
+bun run desktop:build
+# 3. Instalás el nuevo .exe encima del anterior
+# → los datos del usuario en AppData se preservan intactos
+```
+
+### Migrar datos del entorno de desarrollo a la app instalada
+
+Si venías usando la app en modo dev y querés mover tus datos al instalado:
+
+1. Asegurate de que el servidor dev **no esté corriendo**
+2. Copiá los archivos SQLite al directorio de datos de la app instalada:
+
+```powershell
+$src = "C:\ruta\al\repositorio\data"
+$dst = "$env:APPDATA\com.workloghub.dev\data"
+New-Item -ItemType Directory -Force -Path $dst | Out-Null
+Copy-Item "$src\worklog-hub.sqlite"     "$dst\worklog-hub.sqlite"     -Force
+Copy-Item "$src\worklog-hub.sqlite-wal" "$dst\worklog-hub.sqlite-wal" -Force
+Remove-Item "$dst\worklog-hub.sqlite-shm" -ErrorAction SilentlyContinue
+```
+
+3. Abrí la app — SQLite aplica el WAL automáticamente y todos los datos aparecen.
 
 ### Datos de ejemplo
 
@@ -191,7 +265,53 @@ bun run backlog
 3. Hacé clic en un ítem para abrir el panel de detalle.
 4. Usá las acciones rápidas para aceptar, descartar o cambiar el estado.
 5. Para crear un pendiente manualmente, usá el botón **+** en la barra superior.
-6. Si querés conectar ChatGPT, navegá a **Integración ChatGPT / MCP** en el sidebar.
+6. Si querés generar resúmenes diarios con IA, navegá a **Ajustes → Configuración de IA**.
+7. Si querés conectar ChatGPT, navegá a **Integración ChatGPT / MCP** en el sidebar.
+
+---
+
+## Configurar Resumen Diario con IA
+
+La pestaña **Resumen del día** genera un resumen automático a partir de la actividad real del día. Para habilitarla necesitás una API key de OpenAI o Anthropic.
+
+### Paso 1 — Configurar la API key
+
+Con la app abierta, navegá a **Ajustes → Integración ChatGPT / MCP** y bajá hasta la sección **Configuración de IA — Resumen diario**:
+
+1. Seleccioná el proveedor: **OpenAI** o **Anthropic**
+2. Pegá tu API key
+3. Seleccioná el modelo (se puede dejar el valor por defecto)
+4. Hacé clic en **Guardar configuración de IA**
+
+Las keys se guardan localmente en SQLite. No se envían a ningún servidor propio.
+
+### Paso 2 — Generar el resumen del día
+
+1. Navegá a **Resúmenes → Resumen del día** en el sidebar
+2. Hacé clic en **Generar resumen diario**
+3. La app construye el contexto automáticamente (backlog, Git, agentes) y llama a la IA
+4. El resumen se guarda y queda disponible en el historial
+
+### Configurar colectores de Git y agentes (opcional)
+
+Para que el resumen incluya actividad de Git, Claude Code y OpenCode, creá `worklog.config.json` en la raíz del repositorio:
+
+```json
+{
+  "projects": [
+    { "name": "mi-frontend", "path": "C:/ruta/al/frontend" },
+    { "name": "mi-backend", "path": "C:/ruta/al/backend" }
+  ],
+  "agentLogs": {
+    "claudeCode": "C:/Users/usuario/.claude/projects",
+    "openCode": "C:/Users/usuario/.opencode/sessions"
+  },
+  "daysToScan": 7,
+  "maxAgentSessions": 10
+}
+```
+
+Si el archivo no existe, el resumen se genera igualmente usando solo los datos del backlog.
 
 ---
 
@@ -331,7 +451,16 @@ El MCP implementa el protocolo JSON-RPC 2.0 (MCP spec 2025-03-26, Streamable HTT
 
 ## Cómo usar Worklog Hub en la práctica
 
-### Caso 1 — Registrar un bug desde ChatGPT
+### Caso 1 — Generar el resumen del día
+```
+1. Navegá a Resúmenes → Resumen del día
+2. Hacé clic en "Generar resumen diario"
+3. La IA analiza el backlog del día, commits y sesiones de agentes
+4. El resumen se guarda con secciones: avances, agentes, pendientes, qué retomar mañana
+5. Copialo al portapapeles o regenerá si el contexto cambió
+```
+
+### Caso 2 — Registrar un bug desde ChatGPT
 ```
 Usuario: "Encontré que el filtro de cheques no trae todos los registros cuando hay más de 100."
 
@@ -344,7 +473,7 @@ ChatGPT: [llama create_backlog_item]
          Registrado con ID abc123 — aparece en Inbox con estado DETECTED.
 ```
 
-### Caso 2 — Revisar pendientes abiertos desde ChatGPT
+### Caso 3 — Revisar pendientes abiertos desde ChatGPT
 ```
 Usuario: "¿Qué bugs tengo pendientes en el módulo Cheques?"
 
@@ -352,15 +481,15 @@ ChatGPT: [llama list_backlog_items con type="BUG" y module="Cheques"]
          → Responde con la lista filtrada
 ```
 
-### Caso 3 — Marcar una tarea como verificada
+### Caso 4 — Marcar una tarea como verificada
 Desde la app, abrí el detalle del ítem y usá la acción **"Verificar"** — solo disponible para humanos. `VERIFIED_DONE` nunca se asigna automáticamente.
 
-### Caso 4 — Generar prompt para resolver un bug
+### Caso 5 — Generar prompt para resolver un bug
 1. Abrí el detalle del pendiente
 2. Usá la opción **Generar prompt** seleccionando tipo (Implementación, Auditoría, etc.) y target (Frontend / Backend / Fullstack)
 3. El prompt generado se puede copiar o enviar a un agente
 
-### Caso 5 — Debatir una tarea antes de implementarla
+### Caso 6 — Debatir una tarea antes de implementarla
 Desde el detalle del ítem, usá la opción para preparar un prompt de debate y abrirlo en el Project de ChatGPT configurado.
 
 ---
@@ -370,47 +499,75 @@ Desde el detalle del ítem, usá la opción para preparar un prompt de debate y 
 ```
 worklog-hub/
 ├── scripts/
-│   ├── backlog-server.ts     # Servidor principal (API REST + MCP) — bun run backlog
-│   ├── backlog-seed.ts       # Datos de ejemplo — bun run backlog:seed
-│   ├── dev-all.ts            # Orquestador de desarrollo — bun run dev / desktop
-│   ├── worklog-start.ts      # CLI: arrancar el día — bun run worklog:start
-│   ├── worklog-end.ts        # CLI: cerrar el día — bun run worklog:end
-│   ├── worklog-status.ts     # CLI: estado rápido — bun run worklog:status
-│   └── commit-plan.ts        # CLI: propuesta de commits — bun run commit:plan
+│   ├── backlog-server.ts       # Servidor principal (API REST + MCP) — bun run backlog
+│   ├── backlog-seed.ts         # Datos de ejemplo — bun run backlog:seed
+│   ├── dev-all.ts              # Orquestador de desarrollo — bun run dev / desktop
+│   ├── worklog-start.ts        # CLI: arrancar el día — bun run worklog:start
+│   ├── worklog-end.ts          # CLI: cerrar el día — bun run worklog:end
+│   ├── worklog-status.ts       # CLI: estado rápido — bun run worklog:status
+│   └── commit-plan.ts          # CLI: propuesta de commits — bun run commit:plan
 ├── src/
-│   ├── App.tsx               # Root de la SPA
-│   ├── main.tsx              # Entry point React
+│   ├── App.tsx                 # Root de la SPA
+│   ├── main.tsx                # Entry point React
+│   ├── ai/
+│   │   └── ai-client.ts        # Cliente dual OpenAI / Anthropic
+│   ├── collectors/
+│   │   ├── git-collector.ts    # Actividad Git por proyecto
+│   │   ├── claude-code-collector.ts
+│   │   └── opencode-collector.ts
 │   ├── backlog/
-│   │   ├── domain/types.ts   # Tipos de dominio
-│   │   ├── db/               # SQLite: conexión y migraciones
-│   │   ├── repository/       # Acceso a datos
-│   │   ├── service/          # Lógica de negocio y reglas de estado
-│   │   ├── api/              # Handlers HTTP (REST + settings + ngrok)
-│   │   └── mcp/              # Servidor MCP (JSON-RPC 2.0)
+│   │   ├── domain/types.ts     # Tipos de dominio (BacklogItem, DailySummary, etc.)
+│   │   ├── db/                 # SQLite: conexión y migraciones (V1–V5)
+│   │   ├── repository/         # Acceso a datos (backlog, prompts, settings, resúmenes)
+│   │   ├── service/
+│   │   │   ├── backlog-service.ts              # Reglas de negocio y transiciones de estado
+│   │   │   ├── daily-summary-generator-service.ts  # Orquesta contexto + IA + persistencia
+│   │   │   └── ngrok-tunnel-service.ts         # Gestión del proceso ngrok
+│   │   ├── api/
+│   │   │   ├── handlers.ts                     # REST backlog
+│   │   │   ├── daily-summary-handlers.ts       # REST resúmenes diarios + generación con IA
+│   │   │   └── settings-handlers.ts            # REST settings (ngrok + IA)
+│   │   └── mcp/handler.ts      # Servidor MCP JSON-RPC 2.0
 │   ├── components/
-│   │   ├── backlog/          # ItemCard, ItemList, DetailPanel, KpiBar, FilterBar
-│   │   ├── settings/         # ChatGptSettings, NgrokStatusPanel
-│   │   ├── agents/           # AgentTasksSection
-│   │   ├── prompts/          # PromptSection
-│   │   ├── modals/           # CreateItem, AddEvidence, Dispatch, etc.
-│   │   ├── layout/           # Sidebar, Topbar
-│   │   ├── shared/           # FadeIn, MetricCard, AnimatedList, etc.
-│   │   └── ui/               # shadcn/ui components
+│   │   ├── backlog/            # ItemCard, ItemList, DetailPanel, KpiBar, FilterBar
+│   │   ├── daily/
+│   │   │   ├── DailySummarySection.tsx  # Vista principal del resumen diario
+│   │   │   └── MarkdownContent.tsx      # Renderer Markdown liviano para resúmenes
+│   │   ├── settings/           # ChatGptSettings (ngrok + configuración de IA)
+│   │   ├── agents/             # AgentTasksSection
+│   │   ├── prompts/            # PromptSection
+│   │   ├── modals/             # CreateItem, AddEvidence, Dispatch, etc.
+│   │   ├── layout/             # Sidebar, Topbar
+│   │   ├── shared/             # FadeIn, MetricCard, AnimatedList, EmptyState, etc.
+│   │   └── ui/                 # shadcn/ui components
 │   ├── lib/
-│   │   ├── api.ts            # Cliente HTTP hacia el servidor
-│   │   ├── types.ts          # Tipos TypeScript del frontend
-│   │   └── constants.ts      # Labels, mapeos de estado, TAB_CONFIG
+│   │   ├── api.ts              # Cliente HTTP (API, SettingsAPI, DailySummaryAPI, AISettingsAPI)
+│   │   ├── types.ts            # Tipos TypeScript del frontend
+│   │   └── constants.ts        # Labels, mapeos de estado, TAB_CONFIG
 │   └── hooks/
-│       └── useTheme.ts       # Toggle dark/light mode
+│       └── useTheme.ts         # Toggle dark/light mode
 ├── src-tauri/
-│   ├── tauri.conf.json       # Configuración Tauri (productName, bundler, sidecar)
-│   ├── Cargo.toml            # Dependencias Rust
-│   ├── src/lib.rs            # Setup Tauri: arranca el sidecar del servidor
-│   └── binaries/             # Ejecutables compilados (en .gitignore)
+│   ├── tauri.conf.json         # Configuración Tauri (productName, bundler, sidecar)
+│   ├── Cargo.toml              # Dependencias Rust
+│   ├── src/lib.rs              # Setup Tauri: arranca el sidecar del servidor
+│   └── binaries/               # Ejecutables compilados (en .gitignore)
 ├── data/
-│   └── worklog-hub.sqlite    # Base SQLite (auto-creada, en .gitignore)
-└── memory/                   # Notas y contexto del CLI de worklog (local)
+│   └── worklog-hub.sqlite      # Base SQLite (auto-creada, en .gitignore)
+├── worklog.config.json         # Rutas de proyectos y logs de agentes (en .gitignore)
+└── memory/                     # Notas y contexto del CLI de worklog (local)
 ```
+
+### Migraciones de base de datos
+
+Las migraciones se aplican automáticamente al arrancar el servidor:
+
+| Versión | Cambios |
+|---|---|
+| V1 | Tablas base: `backlog_items`, `backlog_evidence`, `backlog_prompts`, `agent_tasks` |
+| V2 | Tabla `daily_summaries` para resúmenes del día |
+| V3 | Tabla `integration_settings` para config de ngrok y otras integraciones |
+| V4 | Columnas `accepted_at`, `verified_at`, `discarded_at`, `reopened_at` en `backlog_items` |
+| V5 | Columnas `model`, `context_snapshot_json`, `prompt_snapshot` en `daily_summaries` |
 
 ---
 
@@ -419,6 +576,7 @@ worklog-hub/
 - **Base de datos**: SQLite en `data/worklog-hub.sqlite`, creada automáticamente al arrancar. No se versiona (está en `.gitignore`).
 - **Sin cuenta remota**: Worklog Hub no requiere autenticación propia ni envía datos a ningún servidor externo.
 - **ngrok authtoken**: se guarda localmente en SQLite. Nunca se loguea completo ni se envía fuera del dispositivo.
+- **API keys de IA (OpenAI / Anthropic)**: se guardan localmente en SQLite. Nunca se loguean ni se muestran en claro. Si se usa la función de Resumen Diario, el contenido del backlog del día se envía a los servidores de OpenAI o Anthropic para generar el resumen.
 - **ngrok**: si está activo, el tráfico de la API MCP pasa por los servidores de ngrok hacia ChatGPT. El contenido de los pendientes es visible para ngrok en tránsito.
 - **CLI de worklog**: los scripts `worklog:start` y `worklog:end` pueden enviar resúmenes de sesiones de agentes a una API de IA si se configura una en `.env`. Esto es opcional y configurable.
 
@@ -431,9 +589,10 @@ worklog-hub/
 | Backlog Vivo (CRUD, estados, filtros, detalle) | Funcional |
 | Servidor MCP y herramientas | Funcional |
 | Integración ngrok con Static Domain | Funcional |
+| Resumen Diario con IA (OpenAI + Anthropic) | Funcional |
 | App web (`bun run dev`) | Funcional |
-| App desktop Windows (`bun run desktop`) | Funcional en desarrollo |
-| Build/instalador Windows | Funcional — sin release publicado |
+| App desktop Windows (`bun run desktop`) | Funcional |
+| Build/instalador Windows (`bun run desktop:build`) | Funcional — datos en AppData, updates sin pérdida de datos |
 | Build macOS / Linux | En evolución — scripts disponibles, no probado extensivamente |
 | CLI de worklog (start/end/status) | Funcional — feature separada del Backlog Vivo |
 | Reconciliación automática con commits/agentes | Diseñado, no implementado |
@@ -443,9 +602,10 @@ worklog-hub/
 
 ## Roadmap
 
-- Releases instalables (`.exe`, `.dmg`) publicados en GitHub
+- Releases descargables (`.exe`, `.dmg`) publicados en GitHub Releases
 - Soporte macOS y Linux verificado y documentado
 - Reconciliación automática: analizar commits y sesiones de agentes para actualizar estados de pendientes
+- Streaming del resumen diario (ver el texto generarse en tiempo real)
 - Importar/exportar backlog
 - Múltiples proyectos con vistas separadas
 - Historial de cambios por ítem

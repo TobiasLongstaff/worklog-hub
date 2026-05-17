@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { SettingsAPI } from "@/lib/api";
+import { SettingsAPI, AISettingsAPI } from "@/lib/api";
 import { IS_TAURI } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import type { NgrokSettings, NgrokState } from "@/lib/types";
+import type { NgrokSettings, NgrokState, AISettings } from "@/lib/types";
 import { NgrokStatusPanel } from "./NgrokStatusPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FadeIn } from "@/components/shared/FadeIn";
@@ -24,6 +24,7 @@ import {
   BookOpen,
   FlaskConical,
   Circle,
+  Cpu,
 } from "lucide-react";
 
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number];
@@ -34,6 +35,17 @@ const DEFAULT_SETTINGS: NgrokSettings = {
   ngrokDevDomain: "",
   ngrokAutostart: false,
   ngrokBinaryPath: "",
+  chatgptProjectUrl: "",
+};
+
+const DEFAULT_AI: AISettings = {
+  aiProvider: "",
+  openaiApiKeyConfigured: false,
+  openaiApiKey: "",
+  openaiModel: "gpt-4o-mini",
+  anthropicApiKeyConfigured: false,
+  anthropicApiKey: "",
+  anthropicModel: "claude-sonnet-4-6",
 };
 
 const DEFAULT_STATE: NgrokState = {
@@ -94,12 +106,20 @@ export function ChatGptSettings() {
   const [domain, setDomain] = useState("");
   const [autostart, setAutostart] = useState(false);
   const [binary, setBinary] = useState("");
+  const [projectUrl, setProjectUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showGuide, setShowGuide] = useState(true);
   const [showWhereToPlace, setShowWhereToPlace] = useState(false);
   const [copiedInstructions, setCopiedInstructions] = useState(false);
   const [copiedTestPrompt, setCopiedTestPrompt] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [aiSettings, setAiSettings] = useState<AISettings>(DEFAULT_AI);
+  const [aiProvider, setAiProvider] = useState("");
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [openaiModel, setOpenaiModel] = useState("gpt-4o-mini");
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [anthropicModel, setAnthropicModel] = useState("claude-sonnet-4-6");
+  const [savingAI, setSavingAI] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const localMcpUrl = IS_TAURI
@@ -131,7 +151,15 @@ export function ChatGptSettings() {
       setDomain(s.ngrokDevDomain ?? "");
       setAutostart(!!s.ngrokAutostart);
       setBinary(s.ngrokBinaryPath ?? "");
+      setProjectUrl(s.chatgptProjectUrl ?? "");
       if (ns.status === "STARTING") startPolling();
+      const ai = await AISettingsAPI.get();
+      setAiSettings(ai);
+      setAiProvider(ai.aiProvider ?? "");
+      setOpenaiKey(ai.openaiApiKey ?? "");
+      setOpenaiModel(ai.openaiModel ?? "gpt-4o-mini");
+      setAnthropicKey(ai.anthropicApiKey ?? "");
+      setAnthropicModel(ai.anthropicModel ?? "claude-sonnet-4-6");
     } catch (e) {
       console.error("Error cargando settings:", e);
     } finally {
@@ -153,6 +181,7 @@ export function ChatGptSettings() {
         ngrokDevDomain: domain.trim(),
         ngrokAutostart: autostart,
         ngrokBinaryPath: binary.trim(),
+        chatgptProjectUrl: projectUrl.trim(),
       });
       setSettings(updated);
       toast.info("Configuración guardada, activando túnel…");
@@ -174,6 +203,7 @@ export function ChatGptSettings() {
         ngrokDevDomain: domain.trim(),
         ngrokAutostart: autostart,
         ngrokBinaryPath: binary.trim(),
+        chatgptProjectUrl: projectUrl.trim(),
       });
       setSettings(updated);
       toast.success("Configuración guardada");
@@ -202,6 +232,27 @@ export function ChatGptSettings() {
       setState(st);
     } catch (e) {
       toast.error(`Error al detener: ${(e as Error).message}`);
+    }
+  }
+
+  async function saveAI() {
+    setSavingAI(true);
+    try {
+      const updated = await AISettingsAPI.save({
+        aiProvider: aiProvider.trim(),
+        openaiApiKey: openaiKey,
+        openaiModel: openaiModel.trim() || "gpt-4o-mini",
+        anthropicApiKey: anthropicKey,
+        anthropicModel: anthropicModel.trim() || "claude-sonnet-4-6",
+      });
+      setAiSettings(updated);
+      setOpenaiKey(updated.openaiApiKey ?? "");
+      setAnthropicKey(updated.anthropicApiKey ?? "");
+      toast.success("Configuración de IA guardada");
+    } catch (e) {
+      toast.error(`Error: ${(e as Error).message}`);
+    } finally {
+      setSavingAI(false);
     }
   }
 
@@ -441,6 +492,20 @@ export function ChatGptSettings() {
               </p>
             </div>
 
+            {/* URL del Project de ChatGPT */}
+            <div className="grid gap-1.5">
+              <Label>URL del Project de ChatGPT <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+              <Input
+                value={projectUrl}
+                onChange={(e) => setProjectUrl(e.target.value)}
+                placeholder="https://chatgpt.com/g/..."
+                className="text-sm"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Para acceder rápido desde Worklog Hub al Project donde tenés Worklog Hub configurado.
+              </p>
+            </div>
+
             <Separator />
 
             {/* Autostart */}
@@ -635,6 +700,155 @@ export function ChatGptSettings() {
             <p className="text-[11px] text-muted-foreground bg-muted/30 rounded-lg px-3 py-2 leading-relaxed">
               Estas instrucciones aplican dentro del Project donde las pegues. Si trabajás con varios proyectos, podés usar variantes adaptadas para cada uno.
             </p>
+          </CardContent>
+        </Card>
+      </FadeIn>
+
+      {/* ── 0. Configuración de IA (para Resumen diario) ──────────────── */}
+      <FadeIn delay={0}>
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 mt-0.5 size-7 rounded-full bg-primary/15 text-primary flex items-center justify-center">
+                <Cpu className="size-3.5" />
+              </div>
+              <div>
+                <CardTitle className="text-sm">Configuración de IA — Resumen diario</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Usada para generar el resumen diario automático desde la app.
+                  El costo corre por tu cuenta según el modelo elegido.
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Provider selector */}
+            <div className="grid gap-1.5">
+              <Label>Proveedor</Label>
+              <div className="flex gap-2">
+                {[
+                  { val: "openai", label: "OpenAI" },
+                  { val: "anthropic", label: "Anthropic" },
+                ].map(({ val, label }) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setAiProvider(val)}
+                    className={cn(
+                      "flex-1 rounded-lg border px-3 py-2 text-sm transition-colors cursor-pointer",
+                      aiProvider === val
+                        ? "border-primary bg-primary/5 text-primary font-medium"
+                        : "border-border/60 bg-muted/30 text-muted-foreground hover:bg-muted/60"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* OpenAI fields */}
+            {aiProvider === "openai" && (
+              <div className="space-y-3">
+                <div className="grid gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label>OpenAI API Key</Label>
+                    <a
+                      href="https://platform.openai.com/api-keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-primary flex items-center gap-0.5 hover:underline"
+                    >
+                      Obtener key <ExternalLink className="size-2.5" />
+                    </a>
+                  </div>
+                  <Input
+                    type="password"
+                    value={openaiKey}
+                    onChange={(e) => setOpenaiKey(e.target.value)}
+                    placeholder={
+                      aiSettings.openaiApiKeyConfigured
+                        ? "Ya configurada — pegá una nueva solo si querés cambiarla"
+                        : "sk-..."
+                    }
+                    autoComplete="off"
+                    className="font-mono text-sm"
+                  />
+                  {aiSettings.openaiApiKeyConfigured && (
+                    <p className="text-[11px] text-success flex items-center gap-1">
+                      <CheckCircle2 className="size-3" /> API key guardada correctamente
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Modelo</Label>
+                  <Input
+                    value={openaiModel}
+                    onChange={(e) => setOpenaiModel(e.target.value)}
+                    placeholder="gpt-4o-mini"
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Recomendado: <code className="bg-muted px-1 rounded">gpt-4o-mini</code> (económico) o <code className="bg-muted px-1 rounded">gpt-4o</code> (mayor calidad).
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Anthropic fields */}
+            {aiProvider === "anthropic" && (
+              <div className="space-y-3">
+                <div className="grid gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label>Anthropic API Key</Label>
+                    <a
+                      href="https://console.anthropic.com/settings/keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-primary flex items-center gap-0.5 hover:underline"
+                    >
+                      Obtener key <ExternalLink className="size-2.5" />
+                    </a>
+                  </div>
+                  <Input
+                    type="password"
+                    value={anthropicKey}
+                    onChange={(e) => setAnthropicKey(e.target.value)}
+                    placeholder={
+                      aiSettings.anthropicApiKeyConfigured
+                        ? "Ya configurada — pegá una nueva solo si querés cambiarla"
+                        : "sk-ant-..."
+                    }
+                    autoComplete="off"
+                    className="font-mono text-sm"
+                  />
+                  {aiSettings.anthropicApiKeyConfigured && (
+                    <p className="text-[11px] text-success flex items-center gap-1">
+                      <CheckCircle2 className="size-3" /> API key guardada correctamente
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Modelo</Label>
+                  <Input
+                    value={anthropicModel}
+                    onChange={(e) => setAnthropicModel(e.target.value)}
+                    placeholder="claude-sonnet-4-6"
+                    className="font-mono text-sm"
+                  />
+                </div>
+              </div>
+            )}
+
+            {!aiProvider && (
+              <p className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
+                Seleccioná un proveedor para ver los campos de configuración.
+              </p>
+            )}
+
+            <Button onClick={saveAI} disabled={savingAI || !aiProvider} size="sm">
+              {savingAI ? "Guardando…" : "Guardar configuración de IA"}
+            </Button>
           </CardContent>
         </Card>
       </FadeIn>

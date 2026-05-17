@@ -8,13 +8,19 @@ import { SettingsRepository } from "../src/backlog/repository/settings-repositor
 import { BacklogService } from "../src/backlog/service/backlog-service.ts";
 import { AgentExecutor } from "../src/backlog/service/agent-executor.ts";
 import { NgrokTunnelService } from "../src/backlog/service/ngrok-tunnel-service.ts";
+import { DailySummaryRepository } from "../src/backlog/repository/daily-summary-repository.ts";
+import { DailySummaryService } from "../src/backlog/service/daily-summary-service.ts";
+import { DailySummaryGeneratorService } from "../src/backlog/service/daily-summary-generator-service.ts";
 import { createApiHandler } from "../src/backlog/api/handlers.ts";
 import { createMcpHandler } from "../src/backlog/mcp/handler.ts";
 import { createSettingsHandler } from "../src/backlog/api/settings-handlers.ts";
+import { createDailySummaryHandler } from "../src/backlog/api/daily-summary-handlers.ts";
 import { loadConfig } from "../src/config/load-config.ts";
 import type { StackConfig } from "../src/config/load-config.ts";
 
-const HUB_ROOT = join(import.meta.dir, "..");
+// En producción (app empaquetada), Tauri pasa WORKLOG_DATA_DIR apuntando a
+// AppData\Roaming\{app}. En dev, usamos la raíz del proyecto.
+const HUB_ROOT = process.env["WORKLOG_DATA_DIR"] ?? join(import.meta.dir, "..");
 const PORT = Number(process.env["BACKLOG_PORT"] ?? 3131);
 const PUBLIC_DIR = join(HUB_ROOT, "dist");
 
@@ -47,10 +53,14 @@ const service = new BacklogService(
   itemRepo, evidenceRepo, promptRepo, taskRepo, executor, projectPaths, stack
 );
 
+const summaryRepo      = new DailySummaryRepository(db);
+const summaryService   = new DailySummaryService(summaryRepo, db);
+const summaryGenerator = new DailySummaryGeneratorService(summaryRepo, db, HUB_ROOT, settingsRepo);
 const ngrokService     = new NgrokTunnelService(settingsRepo);
 const apiHandler       = createApiHandler(service);
-const mcpHandler       = createMcpHandler(service);
+const mcpHandler       = createMcpHandler(service, summaryService);
 const settingsHandler  = createSettingsHandler(settingsRepo, ngrokService, PORT);
+const summaryHandler   = createDailySummaryHandler(summaryService, summaryGenerator);
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -77,6 +87,10 @@ Bun.serve({
 
     if (pathname.startsWith("/api/settings") || pathname === "/api/health") {
       return addCors(await settingsHandler(req));
+    }
+
+    if (pathname.startsWith("/api/daily-summary")) {
+      return addCors(await summaryHandler(req));
     }
 
     if (pathname.startsWith("/api/")) {

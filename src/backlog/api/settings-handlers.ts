@@ -63,6 +63,7 @@ export function createSettingsHandler(
         ngrokDevDomain: repo.get("ngrok_dev_domain") ?? "",
         ngrokAutostart: repo.get("ngrok_autostart") === "true",
         ngrokBinaryPath: repo.get("ngrok_binary_path") ?? "",
+        chatgptProjectUrl: repo.get("chatgpt_project_url") ?? "",
       });
     }
 
@@ -103,6 +104,15 @@ export function createSettingsHandler(
         }
       }
 
+      const projectUrl = body["chatgptProjectUrl"] as string | undefined;
+      if (projectUrl !== undefined) {
+        if (projectUrl.trim() === "") {
+          repo.delete("chatgpt_project_url");
+        } else {
+          repo.set("chatgpt_project_url", projectUrl.trim());
+        }
+      }
+
       ngrok.refreshConfig();
 
       const rawToken = repo.get("ngrok_authtoken");
@@ -113,6 +123,7 @@ export function createSettingsHandler(
         ngrokDevDomain: repo.get("ngrok_dev_domain") ?? "",
         ngrokAutostart: repo.get("ngrok_autostart") === "true",
         ngrokBinaryPath: repo.get("ngrok_binary_path") ?? "",
+        chatgptProjectUrl: repo.get("chatgpt_project_url") ?? "",
       });
     }
 
@@ -133,10 +144,73 @@ export function createSettingsHandler(
       return json(ngrok.state);
     }
 
+    // ── GET /api/settings/ai ──────────────────────────────────────────────────
+    if (method === "GET" && path === "/api/settings/ai") {
+      return json(readAISettings(repo));
+    }
+
+    // ── POST /api/settings/ai ─────────────────────────────────────────────────
+    if (method === "POST" && path === "/api/settings/ai") {
+      const body = await parseBody(req);
+
+      const aiProvider = body["aiProvider"] as string | undefined;
+      if (aiProvider !== undefined) {
+        if (aiProvider.trim() === "") {
+          repo.delete("ai_provider");
+        } else {
+          repo.set("ai_provider", aiProvider.trim());
+        }
+      }
+
+      const openaiKey = body["openaiApiKey"] as string | undefined;
+      if (openaiKey !== undefined && !openaiKey.includes("•")) {
+        if (openaiKey.trim() === "") {
+          repo.delete("openai_api_key");
+        } else {
+          repo.set("openai_api_key", openaiKey.trim());
+        }
+      }
+
+      const openaiModel = body["openaiModel"] as string | undefined;
+      if (openaiModel !== undefined) {
+        repo.set("openai_model", openaiModel.trim() || "gpt-4o-mini");
+      }
+
+      const anthropicKey = body["anthropicApiKey"] as string | undefined;
+      if (anthropicKey !== undefined && !anthropicKey.includes("•")) {
+        if (anthropicKey.trim() === "") {
+          repo.delete("anthropic_api_key");
+        } else {
+          repo.set("anthropic_api_key", anthropicKey.trim());
+        }
+      }
+
+      const anthropicModel = body["anthropicModel"] as string | undefined;
+      if (anthropicModel !== undefined) {
+        repo.set("anthropic_model", anthropicModel.trim() || "claude-sonnet-4-6");
+      }
+
+      return json(readAISettings(repo));
+    }
+
     return jsonError("Ruta no encontrada", 404);
   };
 }
 
 function stripProtocol(raw: string): string {
   return raw.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+}
+
+function readAISettings(repo: SettingsRepository) {
+  const rawOpenaiKey = repo.get("openai_api_key");
+  const rawAnthropicKey = repo.get("anthropic_api_key");
+  return {
+    aiProvider: repo.get("ai_provider") ?? "",
+    openaiApiKeyConfigured: !!rawOpenaiKey,
+    openaiApiKey: maskToken(rawOpenaiKey),
+    openaiModel: repo.get("openai_model") ?? "gpt-4o-mini",
+    anthropicApiKeyConfigured: !!rawAnthropicKey,
+    anthropicApiKey: maskToken(rawAnthropicKey),
+    anthropicModel: repo.get("anthropic_model") ?? "claude-sonnet-4-6",
+  };
 }

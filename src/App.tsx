@@ -16,6 +16,7 @@ import { RegenerateModal } from "@/components/modals/RegenerateModal";
 import { DispatchModal } from "@/components/modals/DispatchModal";
 import { PromptHistoryModal } from "@/components/modals/PromptHistoryModal";
 import { ChatGptSettings } from "@/components/settings/ChatGptSettings";
+import { DailySummarySection } from "@/components/daily/DailySummarySection";
 import { ACTION_STATUS_MAP } from "@/components/backlog/quickActions";
 
 export default function App() {
@@ -57,7 +58,7 @@ export default function App() {
   }, []);
 
   const loadItems = useCallback(async () => {
-    if (activeTab === "CHATGPT_MCP") return;
+    if (activeTab === "CHATGPT_MCP" || activeTab === "DAILY_SUMMARY") return;
 
     setLoadingItems(true);
     setItemsError(null);
@@ -174,6 +175,7 @@ export default function App() {
 
   const cfg = TAB_CONFIG[activeTab];
   const isSettings = activeTab === "CHATGPT_MCP";
+  const isDailySummary = activeTab === "DAILY_SUMMARY";
 
   return (
     <div className="flex h-full overflow-hidden bg-background text-foreground">
@@ -183,7 +185,7 @@ export default function App() {
         <Topbar
           title={cfg.label}
           description={cfg.desc}
-          showActions={!isSettings}
+          showActions={!isSettings && !isDailySummary}
           theme={theme}
           onRefresh={handleRefresh}
           onCreate={() => setCreateOpen(true)}
@@ -193,6 +195,10 @@ export default function App() {
         {isSettings ? (
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             <ChatGptSettings />
+          </div>
+        ) : isDailySummary ? (
+          <div className="flex-1 overflow-hidden">
+            <DailySummarySection />
           </div>
         ) : (
           <>

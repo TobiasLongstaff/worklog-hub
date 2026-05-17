@@ -204,3 +204,32 @@ export interface CreateAgentTaskInput {
   targetRepo: BacklogPromptTargetRepo;
   promptSnapshot: string;
 }
+
+// ── DailySummary ───────────────────────────────────────────────────────────────
+
+export type DailySummarySource = "CHATGPT_MCP" | "MANUAL" | "API" | "OPENAI_API" | "ANTHROPIC_API";
+
+export interface DailySummary {
+  id: string;
+  date: string; // YYYY-MM-DD
+  project: string | null;
+  title: string | null;
+  content: string;
+  source: DailySummarySource;
+  model: string | null;
+  contextSnapshotJson: string | null;
+  promptSnapshot: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDailySummaryInput {
+  date: string;
+  project?: string | null;
+  title?: string | null;
+  content: string;
+  source?: DailySummarySource;
+  model?: string | null;
+  contextSnapshotJson?: string | null;
+  promptSnapshot?: string | null;
+}

@@ -120,6 +120,7 @@ export interface NgrokSettings {
   ngrokDevDomain: string;
   ngrokAutostart: boolean;
   ngrokBinaryPath: string;
+  chatgptProjectUrl: string;
 }
 
 export interface NgrokState {
@@ -139,7 +140,56 @@ export type TabKey =
   | "DISCARDED"
   | "REOPENED"
   | "ALL"
-  | "CHATGPT_MCP";
+  | "CHATGPT_MCP"
+  | "DAILY_SUMMARY";
+
+export type DailySummarySource = "CHATGPT_MCP" | "MANUAL" | "API" | "OPENAI_API" | "ANTHROPIC_API";
+
+export interface DailySummary {
+  id: string;
+  date: string;
+  project: string | null;
+  title: string | null;
+  content: string;
+  source: DailySummarySource;
+  model: string | null;
+  contextSnapshotJson: string | null;
+  promptSnapshot: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AISettings {
+  aiProvider: string;
+  openaiApiKeyConfigured: boolean;
+  openaiApiKey: string;
+  openaiModel: string;
+  anthropicApiKeyConfigured: boolean;
+  anthropicApiKey: string;
+  anthropicModel: string;
+}
+
+export interface DailyContextItem {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  module: string | null;
+  project: string | null;
+}
+
+export interface DailyContext {
+  date: string;
+  project: string | null;
+  createdItems: DailyContextItem[];
+  acceptedItems: DailyContextItem[];
+  verifiedItems: DailyContextItem[];
+  discardedItems: DailyContextItem[];
+  detectedTotal: number;
+  promptsGenerated: number;
+  agentTasksCreated: number;
+  agentTasksCompleted: number;
+}
 
 export interface ListItemsParams {
   status?: BacklogStatus;
