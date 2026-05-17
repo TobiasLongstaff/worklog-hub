@@ -5,6 +5,21 @@ Registrá pendientes, organizá tu backlog técnico, generá resúmenes diarios 
 
 ---
 
+<div align="center">
+
+### Descargar
+
+[![Descargar para Windows](https://img.shields.io/badge/Windows-Descargar%20instalador%20(.exe)-0078d4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/TobiasLongstaff/worklog-hub/releases/latest)
+
+**Sin Bun. Sin Node. Sin configuración.**  
+Instalá y abrí — todos los datos se guardan localmente en tu equipo.
+
+> ¿Querés correrlo desde el código fuente? Saltá a [Instalación y puesta en marcha](#instalación-y-puesta-en-marcha).
+
+</div>
+
+---
+
 ## Qué es Worklog Hub
 
 Worklog Hub nació para resolver un problema concreto: los desarrolladores que trabajan intensivamente con ChatGPT, Claude Code u otros agentes acumulan pendientes en conversaciones que luego se pierden.
