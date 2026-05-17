@@ -6,6 +6,8 @@ dist/
 data/*.sqlite
 data/*.sqlite-wal
 data/*.sqlite-shm
+data/agent-tasks/
+memory/
 
 # Tauri build artifacts
 src-tauri/target/

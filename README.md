@@ -133,7 +133,7 @@ Scripts para arrancar y cerrar el día de trabajo con síntesis por IA:
 ## Instalación y puesta en marcha
 
 ```bash
-git clone https://github.com/tu-usuario/worklog-hub.git
+git clone https://github.com/TobiasLongstaff/worklog-hub.git
 cd worklog-hub
 bun install
 ```
@@ -614,33 +614,26 @@ Las migraciones se aplican automáticamente al arrancar el servidor:
 
 ## Contribuir
 
-Worklog Hub está pensado como una herramienta abierta. Si encontrás errores, tenés ideas para mejorar flujos, querés sumar integraciones o mejorar la documentación, las contribuciones son bienvenidas.
+Las contribuciones son bienvenidas — bugs, features, documentación, mejoras de UX, compatibilidad con macOS/Linux o tests automatizados.
 
-**Cómo contribuir:**
+Leé [CONTRIBUTING.md](./CONTRIBUTING.md) para setup local, convenciones de código y el flujo completo.
 
-1. Hacé fork del repositorio
-2. Creá un branch desde `main` (`git checkout -b feature/mi-mejora`)
-3. Implementá el cambio
-4. Abrí un Pull Request con descripción del problema que resuelve
+---
 
-**Áreas donde las contribuciones tienen más impacto ahora mismo:**
-- Soporte y testing en macOS y Linux
-- Capturas y documentación visual
-- Mejoras de UX en el flujo de gestión de pendientes
-- Integración con más herramientas (Linear, Notion, Jira)
-- Tests automatizados
+## Seguridad
 
-Si encontrás un bug o tenés una idea, abrí un [Issue](https://github.com/tu-usuario/worklog-hub/issues).
+Si encontrás una vulnerabilidad, **no abras un Issue público** — escribí a tobiaslongstaff@gmail.com. Ver [SECURITY.md](./SECURITY.md) para el proceso completo.
 
 ---
 
 ## Licencia
 
-> Este repositorio todavía no tiene una licencia definida. Si vas a usarlo, modificarlo o redistribuirlo, tené en cuenta que sin licencia explícita aplican las restricciones de copyright por defecto. Se recomienda definir una licencia open source (MIT, Apache 2.0 o similar) antes de una publicación amplia.
+Apache 2.0 — ver [LICENSE](./LICENSE).  
+Copyright 2026 Tobias Longstaff.
 
 ---
 
 ## Soporte
 
-- **Bugs y sugerencias**: abrí un [Issue](https://github.com/tu-usuario/worklog-hub/issues) en GitHub
+- **Bugs y sugerencias**: abrí un [Issue](../../issues) en GitHub
 - **Preguntas sobre la integración ChatGPT/MCP**: la sección **Integración ChatGPT / MCP** dentro de la app tiene una guía paso a paso completa con prueba final incluida

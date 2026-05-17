@@ -1,6 +1,9 @@
 {
   "name": "worklog-hub",
   "version": "1.0.0",
+  "description": "Memoria de trabajo local-first para desarrolladores que trabajan con IA. Backlog técnico, resúmenes diarios e integración MCP con ChatGPT.",
+  "author": "Tobias Longstaff",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "worklog:start": "bun scripts/worklog-start.ts",
