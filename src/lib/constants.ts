@@ -38,8 +38,8 @@ export const TAB_CONFIG: Record<TabKey, { label: string; desc: string }> = {
     desc: "Servidor MCP local y túnel ngrok para conectar con ChatGPT",
   },
   DAILY_SUMMARY: {
-    label: "Resumen del día",
-    desc: "Resúmenes diarios generados por ChatGPT o manualmente",
+    label: "Resumen para retomar",
+    desc: "Brief de continuidad: analiza actividad reciente de agentes, backlog y commits para retomar el foco",
   },
 };
 

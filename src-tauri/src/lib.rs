@@ -1,4 +1,5 @@
 use tauri::Manager;
+#[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
 
 // Config de ejemplo embebida en el binario para copiar en el primer arranque.

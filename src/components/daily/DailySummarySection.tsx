@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Check,
   Clipboard,
+  Layers,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -116,54 +117,177 @@ function ContextSection({ ctx }: { ctx: DailyContext }) {
   );
 }
 
+const LOADING_STEPS = [
+  "Recolectando sesiones de OpenCode…",
+  "Leyendo actividad de Claude Code…",
+  "Revisando commits recientes…",
+  "Analizando el backlog…",
+  "Generando brief de continuidad…",
+];
+
+function useLoadingStep(active: boolean) {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (!active) { setStep(0); return; }
+    const id = setInterval(() => setStep((s) => (s + 1) % LOADING_STEPS.length), 2200);
+    return () => clearInterval(id);
+  }, [active]);
+  return LOADING_STEPS[step]!;
+}
+
+const DATA_SOURCES = [
+  { label: "OpenCode", color: "bg-orange-400/70" },
+  { label: "Claude Code", color: "bg-blue-400/70" },
+  { label: "Git", color: "bg-emerald-400/70" },
+  { label: "Backlog", color: "bg-violet-400/70" },
+];
+
 // ── Estado 1: sin resumen ─────────────────────────────────────────────────
 
 function GenerateCTA({
   isToday,
   generating,
   error,
+  context,
   onGenerate,
 }: {
   isToday: boolean;
   generating: boolean;
   error: string | null;
+  context: DailyContext | null;
   onGenerate: () => void;
 }) {
+  const loadingStep = useLoadingStep(generating);
+
+  const backlogTotal = context
+    ? context.createdItems.length +
+      context.acceptedItems.length +
+      context.verifiedItems.length +
+      context.discardedItems.length
+    : 0;
+
+  const chips = context
+    ? [
+        backlogTotal > 0 && {
+          label: `${backlogTotal} mov. de backlog`,
+          cls: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+        },
+        context.agentTasksCreated > 0 && {
+          label: `${context.agentTasksCreated} tarea${context.agentTasksCreated !== 1 ? "s" : ""} de agente`,
+          cls: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+        },
+        context.promptsGenerated > 0 && {
+          label: `${context.promptsGenerated} prompt${context.promptsGenerated !== 1 ? "s" : ""}`,
+          cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+        },
+        context.detectedTotal > 0 && {
+          label: `${context.detectedTotal} en inbox`,
+          cls: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+        },
+      ].filter(Boolean)
+    : [];
+
   return (
-    <FadeIn className="rounded-xl border border-dashed border-border bg-card/30 px-6 py-8 flex flex-col items-center text-center gap-4">
-      <div className="size-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-        <Wand2 className="size-5 text-primary" />
-      </div>
-      <div>
-        <h3 className="text-sm font-semibold text-foreground">Resumen del día</h3>
-        <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-          {isToday
-            ? "Generá un resumen de lo trabajado hoy a partir de tareas, pendientes, prompts y actividad de agentes."
-            : "No hay resumen guardado para esta fecha."}
-        </p>
-      </div>
-
-      {error && (
-        <div className="w-full max-w-md rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 flex items-start gap-2 text-left">
-          <TriangleAlert className="size-3.5 text-destructive shrink-0 mt-0.5" />
-          <p className="text-xs text-destructive leading-relaxed">{error}</p>
+    <FadeIn className="rounded-2xl border border-border/60 bg-gradient-to-b from-card to-card/40 overflow-hidden">
+      {/* Hero */}
+      <div className="px-8 pt-10 pb-7 flex flex-col items-center text-center gap-5">
+        {/* Icon */}
+        <div className="relative">
+          <div className="size-16 rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border border-primary/20 flex items-center justify-center shadow-lg">
+            <Wand2 className="size-7 text-primary" />
+          </div>
+          <div className="absolute -inset-2 rounded-3xl bg-primary/8 blur-xl -z-10" />
         </div>
-      )}
 
+        {/* Copy */}
+        <div className="space-y-2">
+          <h3 className="text-[15px] font-semibold text-foreground tracking-tight">
+            {isToday ? "Resumen para retomar" : "Sin resumen para esta fecha"}
+          </h3>
+          <p className="text-[13px] text-muted-foreground max-w-[340px] leading-relaxed">
+            {isToday
+              ? "Analiza la actividad reciente de agentes, backlog y commits para ayudarte a retomar el foco."
+              : "No se encontró un resumen guardado. Podés navegar a otra fecha o volver a hoy para generar uno."}
+          </p>
+        </div>
+
+        {/* Context chips */}
+        {chips.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            {(chips as { label: string; cls: string }[]).map((chip) => (
+              <span
+                key={chip.label}
+                className={cn(
+                  "text-[11px] border rounded-full px-2.5 py-0.5 font-medium",
+                  chip.cls
+                )}
+              >
+                {chip.label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="w-full max-w-md rounded-xl border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 flex items-start gap-2.5 text-left">
+            <TriangleAlert className="size-3.5 text-destructive shrink-0 mt-0.5" />
+            <p className="text-xs text-destructive leading-relaxed">{error}</p>
+          </div>
+        )}
+
+        {/* Button */}
+        {isToday && (
+          <Button
+            size="lg"
+            onClick={onGenerate}
+            disabled={generating}
+            className="gap-2 min-w-[220px] relative"
+          >
+            {generating ? (
+              <>
+                <Loader2 className="size-4 animate-spin shrink-0" />
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.span
+                    key={loadingStep}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.25 }}
+                    className="truncate"
+                  >
+                    {loadingStep}
+                  </motion.span>
+                </AnimatePresence>
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-4" />
+                Generar resumen para retomar
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+
+      {/* Footer: data sources */}
       {isToday && (
-        <Button onClick={onGenerate} disabled={generating} className="gap-2">
-          {generating ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Analizando la actividad del día y generando resumen…
-            </>
-          ) : (
-            <>
-              <Wand2 className="size-4" />
-              Generar resumen diario
-            </>
-          )}
-        </Button>
+        <div className="mx-6 mb-6 rounded-xl bg-muted/25 border border-border/40 px-4 py-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Layers className="size-3 text-muted-foreground/70" />
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">
+              Fuentes analizadas
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {DATA_SOURCES.map((src) => (
+              <span key={src.label} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className={cn("size-1.5 rounded-full", src.color)} />
+                {src.label}
+              </span>
+            ))}
+          </div>
+        </div>
       )}
     </FadeIn>
   );
@@ -473,6 +597,7 @@ export function DailySummarySection() {
                 isToday={isToday}
                 generating={generating}
                 error={generateError}
+                context={context}
                 onGenerate={generate}
               />
             )}

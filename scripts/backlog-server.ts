@@ -74,7 +74,7 @@ function addCors(res: Response): Response {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
-Bun.serve({
+const httpServer = Bun.serve({
   port: PORT,
 
   async fetch(req) {
@@ -126,6 +126,14 @@ console.log(`
 
   Presioná Ctrl+C para detener.
 `);
+
+// Cierre limpio del socket para evitar sockets zombie en la próxima sesión
+async function shutdown() {
+  await httpServer.stop(true);
+  process.exit(0);
+}
+process.on("SIGINT",  () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
 
 // Autoarranque de ngrok si está configurado
 const autostart = settingsRepo.get("ngrok_autostart");

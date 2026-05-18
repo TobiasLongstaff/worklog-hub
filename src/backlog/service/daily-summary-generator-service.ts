@@ -13,6 +13,8 @@ import type { GitProjectData } from "../../collectors/git-collector.ts";
 
 type Row = Record<string, unknown>;
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export interface GenerationCtxItem {
   id: string;
   title: string;
@@ -39,21 +41,48 @@ export interface GenerationCtxPrompt {
   backlogItemTitle: string | null;
 }
 
-export interface GenerationContext {
+export interface PreviousSummaryEntry {
   date: string;
-  project: string | null;
-  createdItems: GenerationCtxItem[];
-  acceptedItems: GenerationCtxItem[];
-  verifiedItems: GenerationCtxItem[];
-  discardedItems: GenerationCtxItem[];
-  reopenedItems: GenerationCtxItem[];
-  detectedTotal: number;
-  promptsGenerated: GenerationCtxPrompt[];
-  agentTasks: GenerationCtxAgentTask[];
-  gitActivity: GitProjectData[];
-  claudeCodeSessions: AgentSession[];
-  openCodeSessions: AgentSession[];
+  title: string | null;
+  content: string;
 }
+
+export interface BacklogChange {
+  date: string;
+  title: string;
+  type: string;
+  status: string;
+  module: string | null;
+  changeType: string;
+}
+
+export interface ActivityWindow {
+  from: string;
+  to: string;
+  activeDates: string[];
+}
+
+export interface GenerationContext {
+  generatedForDate: string;
+  project: string | null;
+  activityWindow: ActivityWindow;
+  // Prioridad 1 — sesiones de agentes
+  openCodeSessions: AgentSession[];
+  claudeCodeSessions: AgentSession[];
+  // Prioridad 2 — tareas y prompts
+  agentTasks: GenerationCtxAgentTask[];
+  recentPrompts: GenerationCtxPrompt[];
+  // Prioridad 3 — backlog
+  unresolvedItems: GenerationCtxItem[];
+  backlogChanges: BacklogChange[];
+  detectedTotal: number;
+  // Prioridad 4 — git (evidencia complementaria)
+  gitActivity: GitProjectData[];
+  // Continuidad
+  previousSummaries: PreviousSummaryEntry[];
+}
+
+// ── Helpers de formato ────────────────────────────────────────────────────────
 
 function toCtxItem(r: Row): GenerationCtxItem {
   return {
@@ -70,25 +99,71 @@ function extractTitle(content: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
-function fmtItems(items: GenerationCtxItem[]): string {
-  if (items.length === 0) return "  (ninguno)";
-  return items
+function fmtSessions(sessions: AgentSession[], currentDate: string): string {
+  if (sessions.length === 0) return "  (sin actividad registrada en los últimos días)";
+
+  const byDate = new Map<string, AgentSession[]>();
+  for (const s of sessions) {
+    if (!byDate.has(s.date)) byDate.set(s.date, []);
+    byDate.get(s.date)!.push(s);
+  }
+
+  return [...byDate.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([d, daySessions]) => {
+      const dayLabel = d === currentDate ? `Hoy (${d})` : d;
+      const msgsPerSession = d === currentDate ? 8 : 5;
+      const lines = daySessions.flatMap((s) => {
+        const msgs = s.messages
+          .slice(0, msgsPerSession)
+          .map((m) => `      [${m.role.toUpperCase()}]: ${m.content.slice(0, 350)}`);
+        return [`    Sesión (${s.projectDir}):`, ...msgs];
+      });
+      return `  ${dayLabel}:\n${lines.join("\n")}`;
+    })
+    .join("\n\n");
+}
+
+function fmtAgentTasks(tasks: GenerationCtxAgentTask[]): string {
+  if (tasks.length === 0) return "  (ninguna tarea registrada recientemente)";
+  return tasks
     .map(
-      (it) =>
-        `  - [${it.id.slice(0, 8)}] ${it.title} (${it.type}${it.module ? `, módulo: ${it.module}` : ""})`
+      (t) =>
+        `  - [${t.agent}] ${t.backlogItemTitle ?? t.id.slice(0, 8)} → ${t.status}` +
+        (t.outputSummary ? `\n    Resultado: ${t.outputSummary.slice(0, 250)}` : "")
     )
     .join("\n");
 }
 
-function fmtSessions(sessions: AgentSession[], label: string): string {
-  if (sessions.length === 0) return `${label}: (sin actividad registrada hoy)`;
-  const lines = sessions.flatMap((s) => {
-    const msgs = s.messages
-      .slice(0, 6)
-      .map((m) => `    [${m.role.toUpperCase()}]: ${m.content.slice(0, 300)}`);
-    return [`  Sesión ${s.sessionId} (${s.projectDir}):`, ...msgs];
-  });
-  return `${label}:\n${lines.join("\n")}`;
+function fmtPrompts(prompts: GenerationCtxPrompt[]): string {
+  if (prompts.length === 0) return "  (ninguno)";
+  return prompts
+    .map(
+      (p) =>
+        `  - "${p.title}" (${p.promptType}, ${p.targetRepo}${p.backlogItemTitle ? `, item: ${p.backlogItemTitle}` : ""})`
+    )
+    .join("\n");
+}
+
+function fmtUnresolved(items: GenerationCtxItem[]): string {
+  if (items.length === 0) return "  (ningún ítem pendiente de validación o en agente)";
+  return items
+    .map(
+      (it) =>
+        `  - [${it.status}] ${it.title} (${it.type}${it.module ? `, ${it.module}` : ""})`
+    )
+    .join("\n");
+}
+
+function fmtBacklogChanges(changes: BacklogChange[]): string {
+  if (changes.length === 0) return "  (sin cambios de estado en el período)";
+  return changes
+    .map(
+      (c) =>
+        `  - [${c.date}] ${c.changeType}: ${c.title} → ${c.status}` +
+        (c.type !== "BUG" || c.module ? ` (${c.type}${c.module ? `, ${c.module}` : ""})` : "")
+    )
+    .join("\n");
 }
 
 function fmtGit(activity: GitProjectData[]): string {
@@ -99,7 +174,7 @@ function fmtGit(activity: GitProjectData[]): string {
       const commits = g.recentCommits
         ? `\n    Commits recientes:\n${g.recentCommits
             .split("\n")
-            .slice(0, 8)
+            .slice(0, 10)
             .map((l) => `      ${l}`)
             .join("\n")}`
         : "";
@@ -108,99 +183,143 @@ function fmtGit(activity: GitProjectData[]): string {
     .join("\n");
 }
 
-function buildDailySummaryPrompt(ctx: GenerationContext): {
-  system: string;
-  userPrompt: string;
-} {
-  const system = `Sos un asistente que resume el trabajo diario de un desarrollador a partir de evidencia real recopilada por Worklog Hub.
+function fmtPreviousSummaries(summaries: PreviousSummaryEntry[]): string {
+  if (summaries.length === 0) return "  (sin resúmenes anteriores registrados)";
+  return summaries
+    .map((s) => {
+      const label = s.title ?? `Resumen del ${s.date}`;
+      const body =
+        s.content.length > 1000 ? s.content.slice(0, 1000) + "\n  [... truncado]" : s.content;
+      return `### ${s.date} — ${label}\n${body}`;
+    })
+    .join("\n\n---\n\n");
+}
 
-Tu tarea es generar un resumen diario útil, claro y honesto.
+// ── Prompt builder ────────────────────────────────────────────────────────────
 
-## Reglas
-- No inventes avances ni conclusiones que no estén respaldadas por el contexto.
-- Si algo fue iniciado pero no terminado, decilo claramente.
-- Si una IA o agente trabajó sobre una tarea pero no hay evidencia de validación manual, no lo presentés como "resuelto"; decí que fue trabajado o implementado según el agente.
-- Diferenciá claramente: lo discutido, lo implementado, lo verificado, lo pendiente.
-- Si hubo poco movimiento, decilo sin rellenar con información inventada.
+function buildResumeBrief(ctx: GenerationContext): { system: string; userPrompt: string } {
+  const { activityWindow, generatedForDate } = ctx;
+
+  const hasActivity = activityWindow.activeDates.length > 0;
+  const lastActiveDate = hasActivity ? activityWindow.to : null;
+
+  const windowInfo = !hasActivity
+    ? `No se encontró actividad registrada en los últimos 14 días.`
+    : activityWindow.from === activityWindow.to
+    ? `Actividad encontrada únicamente el ${activityWindow.from}.`
+    : `Días activos en el período analizado: ${activityWindow.activeDates.join(", ")}.` +
+      (lastActiveDate && lastActiveDate < generatedForDate
+        ? ` La última actividad registrada fue el ${lastActiveDate}. Hoy (${generatedForDate}) todavía no hay actividad registrada.`
+        : "");
+
+  const system = `Sos un asistente de continuidad de trabajo para un desarrollador de software.
+
+Tu tarea es generar un **Brief de continuidad** que ayude al desarrollador a retomar trabajo después de una pausa — puede ser un fin de semana, un feriado, días de descanso, o simplemente varias horas.
+
+## Tu objetivo
+Que el desarrollador pueda responder inmediatamente:
+1. ¿En qué venía trabajando?
+2. ¿Qué avanzó concretamente?
+3. ¿Qué hicieron OpenCode y Claude Code?
+4. ¿Qué quedó abierto o sin validar?
+5. ¿Qué conviene hacer ahora?
+
+## Jerarquía de fuentes
+1. **Sesiones de OpenCode** — mayor prioridad. Reflejan el trabajo real ejecutado.
+2. **Sesiones de Claude Code** — prioridad alta. Decisiones, análisis y desarrollo.
+3. **Tareas y prompts de Worklog Hub** — prioridad media. Registro de lo que se delegó a agentes.
+4. **Backlog** — prioridad media. Estado de pendientes, qué avanzó, qué quedó abierto.
+5. **Commits de Git** — evidencia complementaria. Confirman implementación pero no explican el "por qué".
+
+## Reglas obligatorias
+- NO centres el texto en la ausencia de actividad del día actual. Si hoy no hubo trabajo, usá la actividad de los últimos días activos.
+- Si pasaron días sin trabajar (fin de semana, feriado), mencionalo en UNA sola línea de contexto y avanzá a lo sustancial.
+- Si un agente trabajó algo pero no hay validación manual del desarrollador, NO lo presentes como "resuelto". Decí "trabajado por el agente / pendiente de verificación".
+- Diferenciá explícitamente: discutido, ejecutado por agente, implementado, validado por el desarrollador.
+- Basate solo en evidencia del contexto. No inventes avances ni conclusiones.
+- Terminá siempre con recomendaciones concretas y priorizadas de qué hacer ahora.
 - Escribí en español claro, profesional y directo.
-- Usá **negrita** (`**texto**`) para resaltar nombres de funcionalidades, módulos, cantidades clave y decisiones importantes dentro del texto de los bullets.
+- Usá **negrita** para nombres de funcionalidades, módulos, cantidades clave y decisiones importantes.
+- Si no hay suficiente evidencia para construir un brief útil, decilo en 2-3 líneas honestas. No rellenes con texto genérico sobre inactividad.
 
-## Formato esperado
-# Resumen del día
+## Formato de salida
+# Resumen para retomar
 
-## Avances principales
+## En qué venías trabajando
 ...
 
-## Trabajo realizado con agentes
-- OpenCode: ...
-- Claude Code: ...
-
-## Pendientes abiertos
+## Avances recientes más importantes
 ...
 
-## Validaciones o pruebas pendientes
+## Trabajo reciente con agentes
+### OpenCode
 ...
 
-## Qué conviene retomar mañana
+### Claude Code
 ...
 
-## Estado general del día
+## Pendientes y validaciones abiertas
+...
+
+## Qué conviene hacer ahora
+1. ...
+2. ...
+3. ...
+
+## Riesgos o cosas a no perder de vista
+...
+
+## Estado general
 ...`;
 
-  const userPrompt = `Generá el resumen de trabajo del día ${ctx.date}${ctx.project ? ` (proyecto: ${ctx.project})` : ""}.
+  const userPrompt = `Generá el brief de continuidad. Hoy es ${generatedForDate}${ctx.project ? ` (proyecto: ${ctx.project})` : ""}.
 
-## Contexto del día
+${windowInfo}
 
-### DETECTADOS HOY (${ctx.createdItems.length} nuevo(s))
-${fmtItems(ctx.createdItems)}
+---
 
-### ACEPTADOS (${ctx.acceptedItems.length})
-${fmtItems(ctx.acceptedItems)}
+## FUENTE PRINCIPAL — SESIONES DE AGENTES
 
-### VERIFICADOS Y CERRADOS (${ctx.verifiedItems.length})
-${fmtItems(ctx.verifiedItems)}
+### OPENCODE (últimos días activos)
+${fmtSessions(ctx.openCodeSessions, generatedForDate)}
 
-### DESCARTADOS (${ctx.discardedItems.length})
-${fmtItems(ctx.discardedItems)}
+### CLAUDE CODE (últimos días activos)
+${fmtSessions(ctx.claudeCodeSessions, generatedForDate)}
 
-### REABIERTOS (${ctx.reopenedItems.length})
-${fmtItems(ctx.reopenedItems)}
+---
 
-### INBOX TOTAL: ${ctx.detectedTotal} pendiente(s) sin revisar
+## TAREAS DE AGENTES EN WORKLOG HUB
+${fmtAgentTasks(ctx.agentTasks)}
 
-### PROMPTS GENERADOS HOY (${ctx.promptsGenerated.length})
-${
-  ctx.promptsGenerated.length === 0
-    ? "  (ninguno)"
-    : ctx.promptsGenerated
-        .map(
-          (p) =>
-            `  - "${p.title}" (${p.promptType}, ${p.targetRepo}${p.backlogItemTitle ? `, item: ${p.backlogItemTitle}` : ""})`
-        )
-        .join("\n")
-}
+### Prompts generados recientemente
+${fmtPrompts(ctx.recentPrompts)}
 
-### TAREAS DE AGENTES (${ctx.agentTasks.length})
-${
-  ctx.agentTasks.length === 0
-    ? "  (ninguna)"
-    : ctx.agentTasks
-        .map(
-          (t) =>
-            `  - [${t.agent}] ${t.backlogItemTitle ?? t.id.slice(0, 8)} → ${t.status}${t.outputSummary ? `\n    Resultado: ${t.outputSummary.slice(0, 200)}` : ""}`
-        )
-        .join("\n")
-}
+---
 
-### ACTIVIDAD GIT
+## ESTADO DEL BACKLOG
+
+### Pendientes en curso o sin validar (estado actual)
+${fmtUnresolved(ctx.unresolvedItems)}
+
+### Cambios de estado recientes
+${fmtBacklogChanges(ctx.backlogChanges)}
+
+### Inbox total sin revisar: ${ctx.detectedTotal}
+
+---
+
+## EVIDENCIA COMPLEMENTARIA — GIT
 ${fmtGit(ctx.gitActivity)}
 
-### ${fmtSessions(ctx.claudeCodeSessions, "CLAUDE CODE")}
+---
 
-### ${fmtSessions(ctx.openCodeSessions, "OPENCODE")}`;
+## CONTINUIDAD — ÚLTIMOS RESÚMENES GENERADOS
+${fmtPreviousSummaries(ctx.previousSummaries)}`;
 
   return { system, userPrompt };
 }
+
+// ── Service ───────────────────────────────────────────────────────────────────
 
 export class DailySummaryGeneratorService {
   constructor(
@@ -213,9 +332,9 @@ export class DailySummaryGeneratorService {
   async generate(date: string, project?: string): Promise<DailySummary> {
     const { client, model, provider } = this.resolveAIClient();
     const context = await this.buildContext(date, project);
-    const { system, userPrompt } = buildDailySummaryPrompt(context);
+    const { system, userPrompt } = buildResumeBrief(context);
     const rawContent = await client.generateText({ system, prompt: userPrompt });
-    const title = extractTitle(rawContent) ?? `Resumen del ${date}`;
+    const title = extractTitle(rawContent) ?? `Resumen para retomar — ${date}`;
 
     return this.repo.upsert({
       date,
@@ -278,48 +397,116 @@ export class DailySummaryGeneratorService {
   }
 
   private async buildContext(date: string, project?: string): Promise<GenerationContext> {
-    const pp = project ? [date, project] : [date];
-    const pc = project ? " AND project = ?" : "";
+    const CALENDAR_LOOKBACK = 14;
+    const MAX_ACTIVE_DAYS = 5;
 
-    const createdItems = (
-      this.db
-        .prepare(
-          `SELECT id, title, type, status, module FROM backlog_items WHERE date(created_at) = ?${pc} ORDER BY created_at ASC`
-        )
-        .all(...pp) as Row[]
-    ).map(toCtxItem);
+    // Últimos 14 días calendario como candidatos
+    const candidateDates = Array.from({ length: CALENDAR_LOOKBACK }, (_, i) => {
+      const d = new Date(date);
+      d.setDate(d.getDate() - i);
+      return d.toISOString().slice(0, 10);
+    });
+    const cutoffDate = candidateDates[candidateDates.length - 1]!;
 
-    const acceptedItems = (
-      this.db
-        .prepare(
-          `SELECT id, title, type, status, module FROM backlog_items WHERE date(accepted_at) = ?${pc}`
-        )
-        .all(...pp) as Row[]
-    ).map(toCtxItem);
+    // ── Recolectar sesiones de agentes ────────────────────────────────────────
+    let allOpenCode: AgentSession[] = [];
+    let allClaude: AgentSession[] = [];
+    let gitActivity: GitProjectData[] = [];
 
-    const verifiedItems = (
-      this.db
-        .prepare(
-          `SELECT id, title, type, status, module FROM backlog_items WHERE date(verified_at) = ?${pc}`
-        )
-        .all(...pp) as Row[]
-    ).map(toCtxItem);
+    try {
+      const config = loadConfig(this.hubRoot);
+      const [git, claude, opencode] = await Promise.allSettled([
+        collectAllGitData(config.projects, CALENDAR_LOOKBACK),
+        collectClaudeCodeSessions(config),
+        collectOpenCodeSessions(config),
+      ]);
+      if (git.status === "fulfilled") gitActivity = git.value;
+      if (claude.status === "fulfilled") {
+        allClaude = claude.value.filter((s) => candidateDates.includes(s.date));
+      }
+      if (opencode.status === "fulfilled") {
+        allOpenCode = opencode.value.filter((s) => candidateDates.includes(s.date));
+      }
+    } catch {
+      // worklog.config.json no encontrado — continúa sin datos de colectores
+    }
 
-    const discardedItems = (
-      this.db
-        .prepare(
-          `SELECT id, title, type, status, module FROM backlog_items WHERE date(discarded_at) = ?${pc}`
-        )
-        .all(...pp) as Row[]
-    ).map(toCtxItem);
+    // ── Identificar días con actividad real ───────────────────────────────────
+    const activeDateSet = new Set<string>([
+      ...allOpenCode.map((s) => s.date),
+      ...allClaude.map((s) => s.date),
+    ]);
 
-    const reopenedItems = (
-      this.db
-        .prepare(
-          `SELECT id, title, type, status, module FROM backlog_items WHERE date(reopened_at) = ?${pc}`
-        )
-        .all(...pp) as Row[]
-    ).map(toCtxItem);
+    const backlogActiveDates = this.db
+      .prepare(
+        `SELECT DISTINCT date(coalesce(verified_at, discarded_at, reopened_at, accepted_at, created_at)) as d
+         FROM backlog_items
+         WHERE date(coalesce(verified_at, discarded_at, reopened_at, accepted_at, created_at)) BETWEEN ? AND ?`
+      )
+      .all(cutoffDate, date) as { d: string }[];
+
+    for (const row of backlogActiveDates) {
+      if (row.d) activeDateSet.add(row.d);
+    }
+
+    const activeDates = [...activeDateSet]
+      .filter((d) => d <= date)
+      .sort((a, b) => b.localeCompare(a))
+      .slice(0, MAX_ACTIVE_DAYS);
+
+    const windowFrom = activeDates.length > 0 ? activeDates[activeDates.length - 1]! : date;
+    const windowTo = activeDates.length > 0 ? activeDates[0]! : date;
+
+    // ── Filtrar sesiones a días activos ───────────────────────────────────────
+    const activeDatesList = activeDates.length > 0 ? activeDates : candidateDates;
+    const openCodeSessions = allOpenCode.filter((s) => activeDatesList.includes(s.date));
+    const claudeCodeSessions = allClaude.filter((s) => activeDatesList.includes(s.date));
+
+    // ── Cambios de estado en el backlog ───────────────────────────────────────
+    const backlogChangeRows = this.db
+      .prepare(
+        `WITH ranked AS (
+           SELECT id, title, type, status, module,
+             max(coalesce(verified_at, discarded_at, reopened_at, accepted_at, created_at)) AS last_change
+           FROM backlog_items
+           WHERE date(coalesce(verified_at, discarded_at, reopened_at, accepted_at, created_at)) BETWEEN ? AND ?
+           GROUP BY id
+         )
+         SELECT r.id, r.title, r.type, r.status, r.module,
+                date(r.last_change) AS change_date,
+                CASE
+                  WHEN date(b.verified_at)  = date(r.last_change) THEN 'VERIFICADO'
+                  WHEN date(b.discarded_at) = date(r.last_change) THEN 'DESCARTADO'
+                  WHEN date(b.reopened_at)  = date(r.last_change) THEN 'REABIERTO'
+                  WHEN date(b.accepted_at)  = date(r.last_change) THEN 'ACEPTADO'
+                  ELSE 'CREADO'
+                END AS change_type
+         FROM ranked r
+         JOIN backlog_items b ON b.id = r.id
+         ORDER BY r.last_change DESC
+         LIMIT 25`
+      )
+      .all(cutoffDate, date) as Row[];
+
+    const backlogChanges: BacklogChange[] = backlogChangeRows.map((r) => ({
+      date: String(r["change_date"] ?? ""),
+      title: String(r["title"] ?? ""),
+      type: String(r["type"] ?? ""),
+      status: String(r["status"] ?? ""),
+      module: r["module"] ? String(r["module"]) : null,
+      changeType: String(r["change_type"] ?? ""),
+    }));
+
+    // ── Ítems sin validar o en curso ──────────────────────────────────────────
+    const unresolvedRows = this.db
+      .prepare(
+        `SELECT id, title, type, status, module FROM backlog_items
+         WHERE status IN ('NEEDS_MANUAL_TEST', 'ASSIGNED_TO_AGENT', 'ACCEPTED',
+                          'IMPLEMENTED_CLAIMED', 'IMPLEMENTED_SUSPECTED')
+         ORDER BY updated_at DESC LIMIT 15`
+      )
+      .all() as Row[];
+    const unresolvedItems = unresolvedRows.map(toCtxItem);
 
     const detectedTotal = (
       this.db
@@ -327,33 +514,17 @@ export class DailySummaryGeneratorService {
         .get() as { n: number }
     ).n;
 
-    const promptRows = this.db
-      .prepare(
-        `SELECT p.id, p.title, p.prompt_type, p.target_repo, b.title as backlog_title
-         FROM backlog_prompts p
-         LEFT JOIN backlog_items b ON b.id = p.backlog_item_id
-         WHERE date(p.created_at) = ?
-         ORDER BY p.created_at ASC`
-      )
-      .all(date) as Row[];
-
-    const promptsGenerated: GenerationCtxPrompt[] = promptRows.map((r) => ({
-      id: String(r["id"] ?? ""),
-      title: String(r["title"] ?? ""),
-      promptType: String(r["prompt_type"] ?? ""),
-      targetRepo: String(r["target_repo"] ?? ""),
-      backlogItemTitle: r["backlog_title"] ? String(r["backlog_title"]) : null,
-    }));
-
+    // ── Tareas de agentes (últimos 14 días) ───────────────────────────────────
     const taskRows = this.db
       .prepare(
-        `SELECT t.id, t.agent, t.status, t.output_summary, t.created_at, t.finished_at, b.title as backlog_title
+        `SELECT t.id, t.agent, t.status, t.output_summary, t.created_at, t.finished_at,
+                b.title AS backlog_title
          FROM agent_tasks t
          LEFT JOIN backlog_items b ON b.id = t.backlog_item_id
-         WHERE date(t.created_at) = ? OR date(t.finished_at) = ?
-         ORDER BY t.created_at ASC`
+         WHERE date(t.created_at) >= ? OR date(t.finished_at) >= ?
+         ORDER BY t.created_at DESC LIMIT 20`
       )
-      .all(date, date) as Row[];
+      .all(cutoffDate, cutoffDate) as Row[];
 
     const agentTasks: GenerationCtxAgentTask[] = taskRows.map((r) => ({
       id: String(r["id"] ?? ""),
@@ -365,43 +536,45 @@ export class DailySummaryGeneratorService {
       finishedAt: r["finished_at"] ? String(r["finished_at"]) : null,
     }));
 
-    let gitActivity: GitProjectData[] = [];
-    let claudeCodeSessions: AgentSession[] = [];
-    let openCodeSessions: AgentSession[] = [];
+    // ── Prompts generados recientemente ───────────────────────────────────────
+    const promptRows = this.db
+      .prepare(
+        `SELECT p.id, p.title, p.prompt_type, p.target_repo, b.title AS backlog_title
+         FROM backlog_prompts p
+         LEFT JOIN backlog_items b ON b.id = p.backlog_item_id
+         WHERE date(p.created_at) >= ?
+         ORDER BY p.created_at DESC LIMIT 10`
+      )
+      .all(cutoffDate) as Row[];
 
-    try {
-      const config = loadConfig(this.hubRoot);
-      const [git, claude, opencode] = await Promise.allSettled([
-        collectAllGitData(config.projects, 1),
-        collectClaudeCodeSessions(config),
-        collectOpenCodeSessions(config),
-      ]);
+    const recentPrompts: GenerationCtxPrompt[] = promptRows.map((r) => ({
+      id: String(r["id"] ?? ""),
+      title: String(r["title"] ?? ""),
+      promptType: String(r["prompt_type"] ?? ""),
+      targetRepo: String(r["target_repo"] ?? ""),
+      backlogItemTitle: r["backlog_title"] ? String(r["backlog_title"]) : null,
+    }));
 
-      if (git.status === "fulfilled") gitActivity = git.value;
-      if (claude.status === "fulfilled") {
-        claudeCodeSessions = claude.value.filter((s) => s.date === date);
-      }
-      if (opencode.status === "fulfilled") {
-        openCodeSessions = opencode.value.filter((s) => s.date === date);
-      }
-    } catch {
-      // worklog.config.json not found — continue with empty collector data
-    }
+    // ── Resúmenes anteriores ──────────────────────────────────────────────────
+    const previousSummaries: PreviousSummaryEntry[] = this.repo
+      .listRecent(20)
+      .filter((s) => s.date < date)
+      .slice(0, 5)
+      .map((s) => ({ date: s.date, title: s.title, content: s.content }));
 
     return {
-      date,
+      generatedForDate: date,
       project: project ?? null,
-      createdItems,
-      acceptedItems,
-      verifiedItems,
-      discardedItems,
-      reopenedItems,
-      detectedTotal,
-      promptsGenerated,
-      agentTasks,
-      gitActivity,
-      claudeCodeSessions,
+      activityWindow: { from: windowFrom, to: windowTo, activeDates },
       openCodeSessions,
+      claudeCodeSessions,
+      agentTasks,
+      recentPrompts,
+      unresolvedItems,
+      backlogChanges,
+      detectedTotal,
+      gitActivity,
+      previousSummaries,
     };
   }
 }

@@ -11,6 +11,7 @@ import { join } from "path";
 
 const isWeb = process.argv.includes("--web");
 const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1");
+const PORT = Number(process.env["BACKLOG_PORT"] ?? 3131);
 
 // ── Inyectar herramientas de compilación en PATH (Windows) ────────────────
 // Necesario porque PowerShell no siempre carga el user PATH correctamente,
@@ -38,7 +39,29 @@ if (process.platform === "win32") {
   }
 }
 
-// ── 1. Levantar servidor backlog en background ────────────────────────────
+// ── 1. Verificar que el puerto no esté ocupado ────────────────────────────
+if (await isPortBusy(PORT)) {
+  process.stdout.write(`\n  Puerto ${PORT} ocupado — intentando liberar...`);
+  const killed = await killPort(PORT);
+  if (killed) {
+    process.stdout.write(" ✓\n");
+    // Pequeña pausa para que el kernel libere el socket
+    await Bun.sleep(800);
+  }
+  if (await isPortBusy(PORT)) {
+    console.error(`
+  ✗ El puerto ${PORT} sigue ocupado y no se pudo liberar.
+
+  Opciones:
+    1. Cerrá la app instalada de Worklog Hub si está corriendo en el sistema.
+    2. Reiniciá la terminal y volvé a intentarlo.
+    3. Si persiste, reiniciá el equipo.
+`);
+    process.exit(1);
+  }
+}
+
+// ── 2. Levantar servidor backlog en background ────────────────────────────
 const server = Bun.spawn(["bun", "scripts/backlog-server.ts"], {
   cwd: ROOT,
   stdout: "inherit",
@@ -46,9 +69,9 @@ const server = Bun.spawn(["bun", "scripts/backlog-server.ts"], {
   env: process.env,
 });
 
-// ── 2. Esperar a que el servidor esté listo ───────────────────────────────
+// ── 3. Esperar a que el servidor esté listo ───────────────────────────────
 process.stdout.write("\n  Esperando servidor backlog");
-const ready = await waitForHealth("http://localhost:3131/api/health", 20_000);
+const ready = await waitForHealth(`http://localhost:${PORT}/api/health`, 20_000);
 if (!ready) {
   process.stdout.write("\n");
   console.error("  [dev-all] El servidor no respondió en 20 s. Revisá los errores arriba.");
@@ -57,7 +80,7 @@ if (!ready) {
 }
 process.stdout.write(" ✓\n\n");
 
-// ── 3. Levantar frontend ──────────────────────────────────────────────────
+// ── 4. Levantar frontend ──────────────────────────────────────────────────
 const frontendCmd = isWeb ? ["bunx", "vite"] : ["bunx", "tauri", "dev"];
 
 const frontend = Bun.spawn(frontendCmd, {
@@ -67,20 +90,57 @@ const frontend = Bun.spawn(frontendCmd, {
   env: process.env,
 });
 
-// ── 4. Cleanup al salir ───────────────────────────────────────────────────
-function cleanup() {
+// ── 5. Cleanup al salir ───────────────────────────────────────────────────
+let shuttingDown = false;
+
+async function shutdown(exitCode = 0): Promise<never> {
+  if (shuttingDown) {
+    await Bun.sleep(4000);
+    process.exit(exitCode);
+  }
+  shuttingDown = true;
+
   try { frontend.kill(); } catch {}
   try { server.kill(); } catch {}
+
+  // Esperar a que el servidor libere el socket (graceful shutdown), hasta 3 s
+  await Promise.race([server.exited, Bun.sleep(3000)]);
+  process.exit(exitCode);
 }
 
-process.on("SIGINT",  () => { cleanup(); process.exit(0); });
-process.on("SIGTERM", () => { cleanup(); process.exit(0); });
-process.on("exit", cleanup);
+process.on("SIGINT",  () => void shutdown(0));
+process.on("SIGTERM", () => void shutdown(0));
 
 await frontend.exited;
-server.kill();
+await shutdown(0);
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+async function killPort(port: number): Promise<boolean> {
+  try {
+    const cmd =
+      process.platform === "win32"
+        ? `Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }`
+        : `lsof -ti tcp:${port} | xargs kill -9`;
+    const shell = process.platform === "win32" ? ["powershell", "-Command", cmd] : ["sh", "-c", cmd];
+    const proc = Bun.spawn(shell, { stdout: "ignore", stderr: "ignore" });
+    await proc.exited;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Intenta bindear el puerto — si falla con EADDRINUSE, está ocupado.
+// Más confiable que HTTP: detecta sockets zombie que no responden HTTP.
+async function isPortBusy(port: number): Promise<boolean> {
+  const net = await import("net");
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once("error", () => resolve(true));
+    srv.listen(port, "0.0.0.0", () => srv.close(() => resolve(false)));
+  });
+}
 
 async function waitForHealth(url: string, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
